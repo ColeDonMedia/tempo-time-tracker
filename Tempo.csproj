@@ -8,8 +8,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Tempo</AssemblyName>
     <RootNamespace>Tempo</RootNamespace>
-    <Version>2.1.0</Version>
     <Product>Tempo</Product>
+    <ApplicationIcon>Assets/tempo.ico</ApplicationIcon>
+    <Version>2.2.0</Version>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 

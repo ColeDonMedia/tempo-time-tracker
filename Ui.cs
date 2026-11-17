@@ -23,6 +23,7 @@ public static class Icons
     public const string Trash = "M5,7 H19 M9,7 V4 H15 V7 M7,7 L8,20 H16 L17,7";
     public const string Download = "M12,4 V15 M7,10 L12,15 L17,10 M5,20 H19";
     public const string Check = "M5,12.5 L10,17.5 L19,7";
+    public const string Ban = "M3,12 A9,9 0 1 0 21,12 A9,9 0 1 0 3,12 M5.6,5.6 L18.4,18.4";
     public const string Archive = "M3,5 H21 V9 H3 Z M5,9 V19 H19 V9 M10,13 H14";
 }
 

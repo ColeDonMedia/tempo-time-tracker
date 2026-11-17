@@ -73,23 +73,44 @@ public class ProjectsPage : PageBase
                 if (State.Running && d.Timer.ProjectId == p.Id) { State.Toast("This project's timer is running", true); return; }
                 p.Archived = true; State.Notify(); State.Toast($"{p.Name} archived. Its entries and invoices are kept.");
             }).WithMargin(0, 0, 2, 6));
+            actions.Children.Add(Ui.IconBtn(Icons.Trash, "Delete project", () => DeleteProject(p), true).WithMargin(0, 0, 2, 6));
         }
         else
         {
             actions.Children.Add(Ui.Btn("Restore", () => { p.Archived = false; State.Notify(); }, "GlassButton", Icons.Archive).WithMargin(0, 0, 8, 6));
-            if (sessions.Count == 0)
-                actions.Children.Add(Ui.IconBtn(Icons.Trash, "Delete project", () =>
-                {
-                    if (Dialogs.Confirm("Delete project", $"Delete “{p.Name}” permanently? It has no time entries.", "Delete", true))
-                    { d.Projects.Remove(p); State.Notify(); }
-                }, true).WithMargin(0, 0, 2, 6));
+            actions.Children.Add(Ui.IconBtn(Icons.Trash, "Delete project", () => DeleteProject(p), true).WithMargin(0, 0, 2, 6));
+        }
+        foreach (var ch in actions.Children.OfType<Button>())
+        {
+            bool labelled = ch.Content is StackPanel panel && panel.Children.Count > 1;
+            ch.Padding = labelled ? new Thickness(12, 8, 12, 8) : new Thickness(6);
+            if (!labelled) ch.Margin = new Thickness(0, 0, 0, 6);
         }
         sp.Children.Add(actions);
 
-        var c = Ui.Card(sp, 20);
+        var c = Ui.Card(sp, 16);
         c.Width = 328; c.Margin = new Thickness(0, 0, 16, 16);
         if (p.Archived) c.Opacity = 0.7;
         return c;
+    }
+
+    static void DeleteProject(Project p)
+    {
+        var d = State.Data;
+        if (State.HasTimer && d.Timer.ProjectId == p.Id) { State.Toast("Stop or save this project's timer first.", true); return; }
+        var ss = d.Sessions.Where(s => s.ProjectId == p.Id).ToList();
+        var invCount = d.Invoices.Count(i => i.ProjectId == p.Id);
+        var billed = ss.Count(s => s.InvoiceId != null);
+        var msg = $"Permanently delete “{p.Name}”?";
+        if (ss.Count > 0) msg += $"\n\nThis also deletes its {ss.Count} time entr{(ss.Count == 1 ? "y" : "ies")} ({Fmt.Hm(ss.Sum(s => s.DurationMilliseconds))}){(billed > 0 ? $", {billed} of them already billed" : "")}.";
+        if (invCount > 0) msg += $"\n\nIts {invCount} invoice record{(invCount == 1 ? " is" : "s are")} kept in Invoices history (delete them there if you want them gone too).";
+        msg += "\n\nThis can't be undone. Archiving hides a project without deleting anything.";
+        if (!Dialogs.Confirm("Delete project", msg, "Delete project", true)) return;
+        d.Sessions.RemoveAll(s => s.ProjectId == p.Id);
+        d.Projects.Remove(p);
+        if (d.Timer.ProjectId == p.Id) d.Timer.ProjectId = null;
+        State.Notify();
+        State.Toast($"Project “{p.Name}” deleted");
     }
 
     sealed class UniformGridLike

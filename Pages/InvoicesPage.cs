@@ -335,13 +335,26 @@ public class InvoicesPage : PageBase
         else if (inv.Status == "Paid")
             acts.Children.Add(Ui.IconBtn(Icons.Edit, "Mark as unpaid", () => { inv.Status = "Issued"; inv.PaidUtc = null; State.Notify(); }));
         if (inv.Status != "Void")
-            acts.Children.Add(Ui.IconBtn(Icons.Trash, "Void invoice and release its entries", () =>
+            acts.Children.Add(Ui.IconBtn(Icons.Ban, "Void invoice and release its entries", () =>
             {
                 if (!Dialogs.Confirm("Void invoice", $"Void {inv.Number}? Its {inv.SessionIds.Count} time entries become unbilled again so you can re-invoice them.", "Void invoice", true)) return;
                 inv.Status = "Void";
                 foreach (var s in State.Data.Sessions.Where(s => s.InvoiceId == inv.Id)) s.InvoiceId = null;
                 State.Notify(); State.Toast($"{inv.Number} voided");
             }, true));
+        acts.Children.Add(Ui.IconBtn(Icons.Trash, "Delete invoice", () =>
+        {
+            var held = State.Data.Sessions.Count(x => x.InvoiceId == inv.Id);
+            var msg = $"Permanently delete {inv.Number} ({Fmt.Money(inv.Total, inv.Currency)})?";
+            if (inv.Status == "Paid") msg += "\n\nIt is marked as paid; deleting removes it from your records.";
+            if (held > 0) msg += $"\n\nIts {held} time entr{(held == 1 ? "y becomes" : "ies become")} unbilled again.";
+            msg += "\n\nThis can't be undone. The PDF file you exported is not touched.";
+            if (!Dialogs.Confirm("Delete invoice", msg, "Delete invoice", true)) return;
+            foreach (var x in State.Data.Sessions.Where(x => x.InvoiceId == inv.Id)) x.InvoiceId = null;
+            State.Data.Invoices.Remove(inv);
+            State.Data.InvoiceNumber = State.NextInvoiceNumber();
+            State.Notify(); State.Toast($"{inv.Number} deleted");
+        }, true));
         Grid.SetColumn(acts, 3); g.Children.Add(acts);
 
         var b = new Border { Padding = new Thickness(12, 10, 8, 10), CornerRadius = new CornerRadius(12), Child = g, Background = Brushes.Transparent };

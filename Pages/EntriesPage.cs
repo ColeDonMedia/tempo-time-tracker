@@ -122,15 +122,15 @@ public class EntriesPage : PageBase
             var right = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 0, 0, 0) };
             var inv = s.InvoiceId == null ? null : State.Data.Invoices.FirstOrDefault(i => i.Id == s.InvoiceId);
             if (s.InvoiceId != null) right.Children.Add(Ui.Pill(inv?.Number ?? "Invoiced", "GoodBrush", "GoodSoftBrush"));
-            else
+            else right.Children.Add(Ui.IconBtn(Icons.Edit, "Edit entry", () => EditEntry(s)));
+            right.Children.Add(Ui.IconBtn(Icons.Trash, "Delete entry", () =>
             {
-                right.Children.Add(Ui.IconBtn(Icons.Edit, "Edit entry", () => EditEntry(s)));
-                right.Children.Add(Ui.IconBtn(Icons.Trash, "Delete entry", () =>
-                {
-                    if (Dialogs.Confirm("Delete entry", "Delete this time entry? This can't be undone.", "Delete", true))
-                    { State.Data.Sessions.Remove(s); State.Notify(); State.Toast("Entry deleted"); }
-                }, true));
-            }
+                var msg = s.InvoiceId == null
+                    ? "Delete this time entry? This can't be undone."
+                    : $"This entry was billed on {inv?.Number ?? "an invoice"}. Deleting it won't change that invoice (it keeps its own copy of the lines), but the entry will be gone from your log. This can't be undone.";
+                if (Dialogs.Confirm("Delete entry", msg, "Delete", true))
+                { State.Data.Sessions.Remove(s); State.Notify(); State.Toast("Entry deleted"); }
+            }, true));
             Grid.SetColumn(right, 4); g.Children.Add(right);
         }
 

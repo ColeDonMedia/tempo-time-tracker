@@ -34,6 +34,11 @@ public partial class App : Application
         State.Load();
         if (Args.Contains("--demo") && Environment.GetEnvironmentVariable("TEMPO_DATA_DIR") != null)
             DemoData.Seed();
+        if (Args.Contains("--make-icon"))
+        {
+            MakeIcon(Args[Array.IndexOf(Args, "--make-icon") + 1]);
+            Shutdown(); return;
+        }
         if (Args.Contains("--sample-pdf") && Environment.GetEnvironmentVariable("TEMPO_DATA_DIR") != null)
         {
             // Realistic sample invoice from the fictional demo data (used for the README image).
@@ -106,6 +111,30 @@ public partial class App : Application
             enc.Save(fs);
         }
         Current.Shutdown();
+    }
+
+    /// <summary>Developer tool: builds a multi-size .ico (PNG-compressed) from the Tempo logo.</summary>
+    static void MakeIcon(string path)
+    {
+        var sizes = new[] { 16, 24, 32, 48, 64, 128, 256 };
+        var pngs = sizes.Select(px =>
+        {
+            var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(Ui.LogoBitmap(px)));
+            using var ms = new System.IO.MemoryStream(); enc.Save(ms); return ms.ToArray();
+        }).ToList();
+        using var fs = System.IO.File.Create(path);
+        using var w = new System.IO.BinaryWriter(fs);
+        w.Write((ushort)0); w.Write((ushort)1); w.Write((ushort)sizes.Length);
+        int offset = 6 + 16 * sizes.Length;
+        for (int i = 0; i < sizes.Length; i++)
+        {
+            w.Write((byte)(sizes[i] >= 256 ? 0 : sizes[i])); w.Write((byte)(sizes[i] >= 256 ? 0 : sizes[i]));
+            w.Write((byte)0); w.Write((byte)0); w.Write((ushort)1); w.Write((ushort)32);
+            w.Write(pngs[i].Length); w.Write(offset);
+            offset += pngs[i].Length;
+        }
+        foreach (var b in pngs) w.Write(b);
     }
 
     public static void ApplyTheme()

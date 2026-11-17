@@ -19,9 +19,9 @@ Invoices are written by Tempo's own PDF engine, with embedded fonts, so accents 
 
 - **Timer** with pause/resume, a progress ring, a tray icon, and `Ctrl+Space` to start or pause from anywhere in the app.
 - **Idle detection**: when you come back, choose to keep, remove, or remove-and-stop.
-- **Projects** per person or brand, each with its own hourly rate (cents supported), colour, and client contact details. Archive instead of delete.
-- **Time entries**: add, edit and delete by hand, filter and search, export to CSV (spreadsheet-formula safe, includes time zone and UTC offset).
-- **Invoices**: live preview, PDF export, tax and discount, PO number, due date, 14 currencies, logo, payment instructions, optional time rounding (6/15/30 min), history with Paid / Overdue / Void. Entries are marked as billed, so nothing is invoiced twice.
+- **Projects** per person or brand, each with its own hourly rate (cents supported), colour, and client contact details. Archive to hide a project, or delete it (with its entries) after a clear confirmation.
+- **Time entries**: add, edit and delete by hand (billed entries too), filter and search, export to CSV (spreadsheet-formula safe, includes time zone and UTC offset).
+- **Invoices**: live preview, PDF export, tax and discount, PO number, due date, 14 currencies, logo, payment instructions, optional time rounding (6/15/30 min), history with Paid / Overdue / Void, and permanent delete. Entries are marked as billed, so nothing is invoiced twice.
 - **Time zones**: everything is stored in UTC and shown in the zone you choose; invoices record the zone they were issued in.
 - **Safe data**: atomic saves with a `.bak` copy, automatic recovery from a damaged file, backup/restore from Settings. Tempo never deletes old entries.
 - **Glass UI**: Windows 11 Mica or Acrylic backdrop (solid fallback on older Windows), light/dark/system theme.
