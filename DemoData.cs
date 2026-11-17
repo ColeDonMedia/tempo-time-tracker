@@ -1,0 +1,54 @@
+namespace Tempo;
+
+/// <summary>Developer-only sample data, used with `Tempo.exe --demo` and TEMPO_DATA_DIR pointing at a scratch folder.</summary>
+public static class DemoData
+{
+    public static void Seed()
+    {
+        var d = State.Data;
+        if (d.Projects.Count > 0) return;
+        var rnd = new Random(7);
+        d.Billing = new BillingProfile { Name = "Northlight Studio", Email = "hello@northlight.example", Address = "12 Harbour Street\nPortland, OR 97201", PaymentInstructions = "Bank transfer: Northlight Studio · Acct 0000 1234 · Ref: invoice number", Note = "Thank you for your business." };
+        d.Projects.AddRange(new[]
+        {
+            new Project { Id = "p1", Name = "Brand identity refresh", Client = "Hashmark", HourlyRate = 95, Color = "violet", ClientEmail = "ap@hashmark.example" },
+            new Project { Id = "p2", Name = "Website redesign", Client = "Lohman Scholars", HourlyRate = 82.5m, Color = "coral" },
+            new Project { Id = "p3", Name = "Packaging illustrations", Client = "Fernweh Tea", HourlyRate = 70, Color = "green" },
+            new Project { Id = "p4", Name = "Pitch deck", Client = "Orbit Labs", HourlyRate = 110, Color = "blue" },
+        });
+        string[] tasks = { "Concept sketches", "Client call", "Revisions round 2", "Moodboard", "Layout exploration", "Final export", "Typography tests", "Asset cleanup" };
+        var today = State.TodayLocal;
+        for (int day = 0; day < 16; day++)
+        {
+            if (today.AddDays(-day).DayOfWeek is DayOfWeek.Sunday) continue;
+            int n = rnd.Next(1, 4);
+            var t = today.AddDays(-day).AddHours(9 + rnd.Next(0, 2));
+            for (int i = 0; i < n; i++)
+            {
+                var p = d.Projects[rnd.Next(d.Projects.Count)];
+                long ms = (long)(rnd.Next(25, 150) * 60_000);
+                var start = State.ToUtc(t);
+                if (start > DateTime.UtcNow.AddMinutes(-ms / 60000 - 5)) { t = t.AddHours(1); continue; }
+                d.Sessions.Add(new Session { ProjectId = p.Id, Task = tasks[rnd.Next(tasks.Length)], StartedAtUtc = start, EndedAtUtc = start.AddMilliseconds(ms), DurationMilliseconds = ms, HourlyRate = p.HourlyRate });
+                t = t.AddMinutes(ms / 60000 + 20 + rnd.Next(0, 40));
+            }
+        }
+        // one paid + one outstanding historic invoice
+        foreach (var (num, pid, status, daysAgo) in new[] { ("INV-2026-001", "p1", "Paid", 38), ("INV-2026-002", "p3", "Issued", 21) })
+        {
+            var p = d.Projects.First(x => x.Id == pid);
+            var inv = new Invoice
+            {
+                Number = num, ProjectId = p.Id, ProjectName = p.Name, ClientName = p.Client, Status = status, IssuedUtc = DateTime.UtcNow.AddDays(-daysAgo), DueUtc = DateTime.UtcNow.AddDays(-daysAgo + 14),
+                PeriodFrom = DateTime.Today.AddDays(-daysAgo - 30), PeriodTo = DateTime.Today.AddDays(-daysAgo), TimeZoneId = State.Tz.Id, Currency = d.Settings.CurrencyCode,
+                Lines = { new InvoiceLine { Description = "Design & revisions", Hours = 14.5m, Rate = p.HourlyRate, Amount = Math.Round(14.5m * p.HourlyRate, 2) } },
+                StudioName = d.Billing.Name, StudioEmail = d.Billing.Email, Note = d.Billing.Note, PaidUtc = status == "Paid" ? DateTime.UtcNow.AddDays(-daysAgo + 9) : null
+            };
+            InvoiceService.ApplyTotals(inv);
+            d.Invoices.Add(inv);
+        }
+        d.InvoiceCounter = 3;
+        d.InvoiceNumber = State.NextInvoiceNumber();
+        State.Save();
+    }
+}

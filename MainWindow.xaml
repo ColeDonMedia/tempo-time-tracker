@@ -1,0 +1,90 @@
+<Window x:Class="Tempo.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Tempo" Width="1280" Height="820" MinWidth="1040" MinHeight="680"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
+        Foreground="{DynamicResource TextBrush}" UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType">
+    <Grid>
+        <!-- Ambient colour glows: give the glass something to catch -->
+        <Grid IsHitTestVisible="False">
+            <Ellipse Width="760" Height="760" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-180,-260,0,0">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="{DynamicResource Blob1C}" Offset="0"/>
+                        <GradientStop Color="{DynamicResource Blob1T}" Offset="1"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+            <Ellipse Width="820" Height="820" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-180,-260,0">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="{DynamicResource Blob2C}" Offset="0"/>
+                        <GradientStop Color="{DynamicResource Blob2T}" Offset="1"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+            <Ellipse Width="900" Height="900" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-100,-420">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="{DynamicResource Blob3C}" Offset="0"/>
+                        <GradientStop Color="{DynamicResource Blob3T}" Offset="1"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+        </Grid>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="244"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Sidebar -->
+            <Border Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,0,1,0">
+                <DockPanel Margin="18,22,18,18">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,0,0,26">
+                        <ContentControl x:Name="LogoHost"/>
+                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="Tempo" FontSize="20" FontWeight="SemiBold"/>
+                            <TextBlock Text="Studio time tracker" FontSize="11.5" Foreground="{DynamicResource MutedBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Mini timer -->
+                    <Border x:Name="MiniTimer" DockPanel.Dock="Bottom" Style="{StaticResource Card}" Padding="14,12"
+                            Visibility="Collapsed" Cursor="Hand" ToolTip="Open timer" MouseLeftButtonUp="MiniTimer_Click">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="MiniDot" Width="8" Height="8" Fill="{DynamicResource AccentBrush}" Margin="0,0,8,0"/>
+                                <TextBlock x:Name="MiniState" Text="TIMER RUNNING" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"/>
+                            </StackPanel>
+                            <TextBlock x:Name="MiniClock" Text="00:00:00" FontSize="24" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular" Margin="0,4,0,0"/>
+                            <TextBlock x:Name="MiniProject" Text="" FontSize="12" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel x:Name="Nav">
+                        <TextBlock Text="WORKSPACE" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource FaintBrush}" Margin="12,0,0,8"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Page host -->
+            <ScrollViewer x:Name="Scroller" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ContentControl x:Name="PageHost" MaxWidth="1120" Margin="40,32,40,40" HorizontalAlignment="Stretch" IsTabStop="False"/>
+            </ScrollViewer>
+
+            <!-- Toast -->
+            <Border x:Name="ToastBorder" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,28"
+                    Opacity="0" IsHitTestVisible="False" CornerRadius="14" Padding="18,12" BorderThickness="1"
+                    Background="{DynamicResource PopupBrush}" BorderBrush="{DynamicResource FieldBorderBrush}">
+                <Border.Effect><DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.35"/></Border.Effect>
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse x:Name="ToastDot" Width="8" Height="8" Margin="0,0,10,0" Fill="{DynamicResource GoodBrush}"/>
+                    <TextBlock x:Name="ToastText" MaxWidth="620" TextWrapping="Wrap" FontWeight="Medium"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

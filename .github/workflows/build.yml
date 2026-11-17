@@ -1,0 +1,42 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write   # needed to attach Tempo.exe to a release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        run: dotnet build Tempo.csproj -c Release
+
+      - name: Publish single-file exe
+        run: >
+          dotnet publish Tempo.csproj -c Release -r win-x64 --self-contained false
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tempo-win-x64
+          path: publish/Tempo.exe
+
+      # Push a tag like v2.1.0 to create a GitHub Release with the exe attached.
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: publish/Tempo.exe
+          generate_release_notes: true

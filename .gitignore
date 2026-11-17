@@ -1,0 +1,23 @@
+## Build output
+bin/
+obj/
+publish/
+dist/
+*.pdb
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+## Local data & secrets (never commit)
+tempo-data*.json
+tempo-error.log
+*.pfx
+*.p12
+
+## OS
+Thumbs.db
+.DS_Store
