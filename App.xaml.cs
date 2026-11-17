@@ -34,6 +34,24 @@ public partial class App : Application
         State.Load();
         if (Args.Contains("--demo") && Environment.GetEnvironmentVariable("TEMPO_DATA_DIR") != null)
             DemoData.Seed();
+        if (Args.Contains("--sample-pdf") && Environment.GetEnvironmentVariable("TEMPO_DATA_DIR") != null)
+        {
+            // Realistic sample invoice from the fictional demo data (used for the README image).
+            var pr = State.Data.Projects.First(x => x.Id == "p4");
+            var (lines, _) = InvoiceService.BuildLines(pr, State.TodayLocal.AddDays(-30), State.TodayLocal, "Task", 0);
+            var b = State.Data.Billing;
+            var sample = new Invoice
+            {
+                Number = "INV-2026-003", ProjectId = pr.Id, ProjectName = pr.Name, ClientName = pr.Client, ClientEmail = "billing@orbitlabs.example",
+                ClientAddress = "400 Market Street, Suite 12\nSan Francisco, CA 94111", PoNumber = "PO-7731",
+                IssuedUtc = DateTime.UtcNow, DueUtc = DateTime.UtcNow.AddDays(14), PeriodFrom = State.TodayLocal.AddDays(-30), PeriodTo = State.TodayLocal,
+                TimeZoneId = State.Tz.Id, Currency = "USD", Lines = lines, TaxLabel = "Sales tax", TaxPercent = 8.5m,
+                Note = b.Note, PaymentInstructions = b.PaymentInstructions, StudioName = b.Name, StudioEmail = b.Email, StudioAddress = b.Address
+            };
+            InvoiceService.ApplyTotals(sample);
+            InvoiceService.WritePdf(sample, Args[Array.IndexOf(Args, "--sample-pdf") + 1]);
+            Shutdown(); return;
+        }
         if (Args.Contains("--selftest-pdf") && Environment.GetEnvironmentVariable("TEMPO_DATA_DIR") != null)
         {
             var inv = State.Data.Invoices.First(); inv.StudioAddress = "12 Harbour Street, Portland, OR 97201"; inv.Lines.AddRange(Enumerable.Range(1, 30).Select(i => new InvoiceLine { Description = "Žluťoučký kůň — 日本語 中文 한국어 — línea " + i, Hours = 1.25m, Rate = 95, Amount = 118.75m })); InvoiceService.ApplyTotals(inv); inv.TaxPercent = 8.5m; inv.TaxAmount = Math.Round((inv.Subtotal - inv.DiscountAmount) * 0.085m, 2); inv.Total = inv.Subtotal + inv.TaxAmount;

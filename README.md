@@ -9,6 +9,12 @@ A free, open-source **studio time tracker for Windows 11**. Track hours per clie
 | ![Projects](docs/screenshots/dark-projects.png) | ![Time entries](docs/screenshots/dark-entries.png) |
 | ![Invoices (light)](docs/screenshots/light-invoices.png) | ![Overview (light)](docs/screenshots/light-overview.png) |
 
+### Invoice PDF
+
+Invoices are written by Tempo's own PDF engine, with embedded fonts, so accents and non-Latin text come out right.
+
+<p align="center"><img src="docs/screenshots/invoice-pdf.png" alt="Sample invoice PDF" width="520"></p>
+
 ## Features
 
 - **Timer** with pause/resume, a progress ring, a tray icon, and `Ctrl+Space` to start or pause from anywhere in the app.
@@ -51,7 +57,8 @@ These only work when the `TEMPO_DATA_DIR` environment variable points at a scrat
 $env:TEMPO_DATA_DIR = "$env:TEMP\tempo-demo"
 .\Tempo.exe --demo                                   # fictional sample data
 .\Tempo.exe --demo --shot docs\screenshots --theme Dark   # re-render the README screenshots
-.\Tempo.exe --demo --selftest-pdf out.pdf            # write a sample invoice PDF and exit
+.\Tempo.exe --demo --sample-pdf out.pdf             # write a realistic sample invoice PDF and exit
+.\Tempo.exe --demo --selftest-pdf out.pdf           # stress-test PDF (30 lines, accents, CJK) and exit
 ```
 
 ## Credits
