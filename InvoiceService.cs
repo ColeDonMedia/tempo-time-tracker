@@ -1,7 +1,5 @@
 using System.IO;
-using QuestPDF.Fluent;
-using QuestPDF.Helpers;
-using QuestPDF.Infrastructure;
+using System.Windows.Media;
 
 namespace Tempo;
 
@@ -58,8 +56,10 @@ public static class InvoiceService
         return s.Trim();
     }
 
-    // ---------------- PDF ----------------
-    const string Ink = "#1E2B34", Muted = "#5E6A74", Faint = "#8A949C", Line = "#DDE2E0", Coral = "#E8573C", Green = "#1B8F69";
+    // ---------------- PDF (Tempo's own writer, see Pdf.cs) ----------------
+    static Color Hex(string h) => (Color)ColorConverter.ConvertFromString(h);
+    static readonly Color Ink = Hex("#1E2B34"), Muted = Hex("#5E6A74"), Faint = Hex("#8A949C"), Rule = Hex("#DDE2E0"),
+                          RowRule = Hex("#E6EAE8"), HeadRule = Hex("#BFC7C4"), Coral = Hex("#E8573C"), Green = Hex("#1B8F69");
 
     public static void WritePdf(Invoice inv, string path)
     {
@@ -67,128 +67,139 @@ public static class InvoiceService
         try { tz = TimeZoneInfo.FindSystemTimeZoneById(inv.TimeZoneId); } catch { tz = TimeZoneInfo.Local; }
         DateTime L(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), tz);
         string D(DateTime d) => d.ToString("MMM d, yyyy");
-        string M(decimal v) => Fmt.Money(v, inv.Currency);
-        byte[]? logo = null;
-        if (!string.IsNullOrEmpty(inv.LogoPath) && File.Exists(inv.LogoPath)) { try { logo = File.ReadAllBytes(inv.LogoPath); } catch { } }
+        string Mo(decimal v) => Fmt.Money(v, inv.Currency);
 
-        Document.Create(doc => doc.Page(page =>
+        var w = new PdfWriter();
+        bool letter = Fmt.UsLetter(inv.Currency);
+        double PW = letter ? 612 : 595.28, PH = letter ? 792 : 841.89, M = 44, cw = PW - 2 * M, limit = PH - M - 24;
+        var page = w.AddPage(PW, PH);
+        double y = M;
+
+        PdfWriter.Img? logo = !string.IsNullOrEmpty(inv.LogoPath) && File.Exists(inv.LogoPath) ? w.LoadImage(inv.LogoPath) : null;
+
+        // wrapped paragraph helper: returns the y below the text
+        double Para(PdfWriter.Page pg, double x, double top, double width, string text, double size, bool bold, Color c)
         {
-            page.Size(Fmt.UsLetter(inv.Currency) ? PageSizes.Letter : PageSizes.A4);
-            page.Margin(44);
-            page.DefaultTextStyle(t => t.FontSize(10).FontColor(Ink).FontFamily("Segoe UI"));
+            foreach (var line in w.Wrap(text, width, size, bold)) { pg.Text(x, top, line, size, bold, c); top += size * 1.35; }
+            return top;
+        }
 
-            page.Content().Column(col =>
+        // ---- header ----
+        double leftX = M;
+        if (logo != null)
+        {
+            double k = Math.Min(54.0 / logo.Width, 54.0 / logo.Height);
+            page.Image(logo, M, y, logo.Width * k, logo.Height * k);
+            leftX += 66;
+        }
+        var name = string.IsNullOrWhiteSpace(inv.StudioName) ? "Your studio" : inv.StudioName;
+        double ny = Para(page, leftX, y, cw * 0.55 - (leftX - M), name, 17, true, Ink);
+        if (!string.IsNullOrWhiteSpace(inv.StudioEmail)) ny = Para(page, leftX, ny + 1, cw * 0.55, inv.StudioEmail, 10, false, Muted);
+        double right = M + cw;
+        page.TextRight(right, y - 2, "INVOICE", 26, true, Coral);
+        page.TextRight(right, y + 34, inv.Number, 12, true, Ink);
+        if (inv.Status == "Paid") page.TextRight(right, y + 52, "PAID" + (inv.PaidUtc is DateTime pd ? "  " + D(L(pd)) : ""), 10, true, Green);
+        else if (inv.Status == "Void") page.TextRight(right, y + 52, "VOID", 10, true, Faint);
+        y = Math.Max(ny, y + 70) + 12;
+        page.Line(M, y, M + cw, y, 0.8, Rule);
+        y += 18;
+
+        // ---- parties + details ----
+        double detW = 190, colW = (cw - detW - 24) / 2;
+        double yb = y, yf = y, yd = y;
+        page.Text(M, yb, "BILL TO", 8, true, Faint); yb += 13;
+        yb = Para(page, M, yb, colW, inv.ClientName, 11, true, Ink);
+        yb = Para(page, M, yb, colW, inv.ProjectName, 10, false, Muted);
+        if (!string.IsNullOrWhiteSpace(inv.ClientEmail)) yb = Para(page, M, yb, colW, inv.ClientEmail, 10, false, Muted);
+        if (!string.IsNullOrWhiteSpace(inv.ClientAddress)) yb = Para(page, M, yb, colW, inv.ClientAddress, 10, false, Muted);
+        double fx = M + colW + 12;
+        page.Text(fx, yf, "FROM", 8, true, Faint); yf += 13;
+        if (!string.IsNullOrWhiteSpace(inv.StudioAddress)) yf = Para(page, fx, yf, colW, inv.StudioAddress, 10, false, Muted);
+        if (!string.IsNullOrWhiteSpace(inv.TaxId)) yf = Para(page, fx, yf, colW, "Tax ID: " + inv.TaxId, 10, false, Muted);
+        double dx = M + cw - detW;
+        void Kv(string k, string v) { page.Text(dx, yd, k, 10, false, Faint); page.TextRight(dx + detW, yd, v, 10, true, Ink); yd += 14; }
+        Kv("Issued", D(L(inv.IssuedUtc)));
+        Kv("Due", D(L(inv.DueUtc)));
+        Kv("Period", $"{inv.PeriodFrom:MMM d} – {inv.PeriodTo:MMM d, yyyy}");
+        if (!string.IsNullOrWhiteSpace(inv.PoNumber)) Kv("PO number", inv.PoNumber);
+        Kv("Currency", inv.Currency);
+        y = Math.Max(yb, Math.Max(yf, yd)) + 24;
+
+        // ---- line items ----
+        double c0 = cw * 6 / 10.4, c1 = cw * 1.2 / 10.4, c2 = cw * 1.5 / 10.4, c3 = cw * 1.7 / 10.4;
+        double x1 = M + c0 + c1, x2 = x1 + c2, x3 = x2 + c3;
+        void TableHeader()
+        {
+            page.Text(M, y, "DESCRIPTION", 8, true, Faint);
+            page.TextRight(M + c0 + c1, y, "HOURS", 8, true, Faint);
+            page.TextRight(x2, y, "RATE", 8, true, Faint);
+            page.TextRight(x3, y, "AMOUNT", 8, true, Faint);
+            y += 16;
+            page.Line(M, y, M + cw, y, 1, HeadRule);
+        }
+        TableHeader();
+        foreach (var l in inv.Lines)
+        {
+            var lines = w.Wrap(l.Description, c0 - 14, 10, false);
+            double rowH = lines.Count * 13.5 + 14;
+            if (y + rowH > limit)
             {
-                col.Spacing(22);
+                page = w.AddPage(PW, PH); y = M;
+                TableHeader();
+            }
+            double ty = y + 7;
+            foreach (var ln in lines) { page.Text(M, ty, ln, 10, false, Ink); ty += 13.5; }
+            page.TextRight(M + c0 + c1, y + 7, l.Hours.ToString("0.00"), 10, false, Ink);
+            page.TextRight(x2, y + 7, Mo(l.Rate), 10, false, Ink);
+            page.TextRight(x3, y + 7, Mo(l.Amount), 10, true, Ink);
+            y += rowH;
+            page.Line(M, y, M + cw, y, 0.6, RowRule);
+        }
 
-                // header
-                col.Item().Row(row =>
-                {
-                    row.RelativeItem().Row(left =>
-                    {
-                        if (logo != null) left.ConstantItem(54).PaddingRight(12).Height(54).Image(logo).FitArea();
-                        left.RelativeItem().Column(c =>
-                        {
-                            c.Item().Text(string.IsNullOrWhiteSpace(inv.StudioName) ? "Your studio" : inv.StudioName).FontSize(17).SemiBold();
-                            if (!string.IsNullOrWhiteSpace(inv.StudioEmail)) c.Item().Text(inv.StudioEmail).FontColor(Muted);
-                        });
-                    });
-                    row.ConstantItem(190).AlignRight().Column(c =>
-                    {
-                        c.Item().Text("INVOICE").FontSize(26).SemiBold().FontColor(Coral);
-                        c.Item().Text(inv.Number).FontSize(12).SemiBold();
-                        if (inv.Status == "Paid") c.Item().Text("PAID" + (inv.PaidUtc is DateTime pd ? "  " + D(L(pd)) : "")).FontColor(Green).SemiBold();
-                        if (inv.Status == "Void") c.Item().Text("VOID").FontColor(Faint).SemiBold();
-                    });
-                });
+        // ---- totals ----
+        var rows = new List<(string K, string V, bool Big)> { ("Total hours", inv.TotalHours.ToString("0.00"), false), ("Subtotal", Mo(inv.Subtotal), false) };
+        if (inv.DiscountAmount != 0) rows.Add(($"Discount ({Fmt.Dec(inv.DiscountPercent)}%)", "-" + Mo(inv.DiscountAmount), false));
+        if (inv.TaxAmount != 0 || inv.TaxPercent != 0) rows.Add(($"{inv.TaxLabel} ({Fmt.Dec(inv.TaxPercent)}%)", Mo(inv.TaxAmount), false));
+        rows.Add((inv.Status == "Paid" ? "TOTAL PAID" : "TOTAL DUE", Mo(inv.Total), true));
+        double totH = rows.Count * 18 + 30;
+        y += 18;
+        if (y + totH > limit) { page = w.AddPage(PW, PH); y = M; }
+        double tw = 250, tx = M + cw - tw;
+        foreach (var (k, v, big) in rows)
+        {
+            if (big) { page.Line(tx, y + 2, tx + tw, y + 2, 0.8, Rule); y += 10; }
+            page.Text(tx, y + (big ? 3 : 0), k, big ? 12 : 10, true, big ? Ink : Muted);
+            page.TextRight(tx + tw, y, v, big ? 15 : 10, true, big ? Coral : Ink);
+            y += big ? 26 : 18;
+        }
 
-                col.Item().LineHorizontal(0.8f).LineColor(Line);
+        // ---- payment + note ----
+        y += 14;
+        if (!string.IsNullOrWhiteSpace(inv.PaymentInstructions))
+        {
+            var pl = w.Wrap(inv.PaymentInstructions, cw, 10, false);
+            if (y + 20 + pl.Count * 13.5 > limit) { page = w.AddPage(PW, PH); y = M; }
+            page.Text(M, y, "PAYMENT DETAILS", 8, true, Faint); y += 13;
+            y = Para(page, M, y, cw, inv.PaymentInstructions, 10, false, Muted) + 12;
+        }
+        if (!string.IsNullOrWhiteSpace(inv.Note))
+        {
+            var nl = w.Wrap(inv.Note, cw, 10, false);
+            if (y + nl.Count * 13.5 > limit) { page = w.AddPage(PW, PH); y = M; }
+            Para(page, M, y, cw, inv.Note, 10, false, Muted);
+        }
 
-                // parties + details
-                col.Item().Row(row =>
-                {
-                    row.RelativeItem().Column(c =>
-                    {
-                        c.Item().Text("BILL TO").FontSize(8).SemiBold().FontColor(Faint);
-                        c.Item().PaddingTop(3).Text(inv.ClientName).SemiBold().FontSize(11);
-                        c.Item().Text(inv.ProjectName).FontColor(Muted);
-                        if (!string.IsNullOrWhiteSpace(inv.ClientEmail)) c.Item().Text(inv.ClientEmail).FontColor(Muted);
-                        if (!string.IsNullOrWhiteSpace(inv.ClientAddress)) c.Item().Text(inv.ClientAddress).FontColor(Muted);
-                    });
-                    row.RelativeItem().Column(c =>
-                    {
-                        c.Item().Text("FROM").FontSize(8).SemiBold().FontColor(Faint);
-                        if (!string.IsNullOrWhiteSpace(inv.StudioAddress)) c.Item().PaddingTop(3).Text(inv.StudioAddress).FontColor(Muted);
-                        if (!string.IsNullOrWhiteSpace(inv.TaxId)) c.Item().Text("Tax ID: " + inv.TaxId).FontColor(Muted);
-                    });
-                    row.ConstantItem(190).Column(c =>
-                    {
-                        void Kv(string k, string v) => c.Item().Row(r => { r.RelativeItem().Text(k).FontColor(Faint); r.AutoItem().Text(v).SemiBold(); });
-                        Kv("Issued", D(L(inv.IssuedUtc)));
-                        Kv("Due", D(L(inv.DueUtc)));
-                        Kv("Period", $"{inv.PeriodFrom:MMM d} – {inv.PeriodTo:MMM d, yyyy}");
-                        if (!string.IsNullOrWhiteSpace(inv.PoNumber)) Kv("PO number", inv.PoNumber);
-                        Kv("Currency", inv.Currency);
-                    });
-                });
+        // ---- footers (need the final page count) ----
+        var zone = tz.IsDaylightSavingTime(inv.IssuedUtc) ? tz.DaylightName : tz.StandardName;
+        var off = tz.GetUtcOffset(inv.IssuedUtc);
+        var tzNote = $"Times recorded in {zone} (UTC{(off < TimeSpan.Zero ? "-" : "+")}{off:hh\\:mm})";
+        for (int i = 0; i < w.PageCount; i++)
+        {
+            var pg = w.PageAt(i);
+            pg.Text(M, PH - M + 6, tzNote, 8, false, Faint);
+            pg.TextRight(M + cw, PH - M + 6, $"Page {i + 1} of {w.PageCount}", 8, false, Faint);
+        }
 
-                // line items
-                col.Item().Table(t =>
-                {
-                    t.ColumnsDefinition(c =>
-                    {
-                        c.RelativeColumn(6); c.RelativeColumn(1.2f); c.RelativeColumn(1.5f); c.RelativeColumn(1.7f);
-                    });
-                    static IContainer H(IContainer c) => c.BorderBottom(1).BorderColor("#BFC7C4").PaddingVertical(6).DefaultTextStyle(x => x.FontSize(8).SemiBold().FontColor("#8A949C"));
-                    static IContainer B(IContainer c) => c.BorderBottom(0.6f).BorderColor("#E6EAE8").PaddingVertical(7);
-                    t.Header(h =>
-                    {
-                        h.Cell().Element(H).Text("DESCRIPTION");
-                        h.Cell().Element(H).AlignRight().Text("HOURS");
-                        h.Cell().Element(H).AlignRight().Text("RATE");
-                        h.Cell().Element(H).AlignRight().Text("AMOUNT");
-                    });
-                    foreach (var l in inv.Lines)
-                    {
-                        t.Cell().Element(B).Text(l.Description);
-                        t.Cell().Element(B).AlignRight().Text(l.Hours.ToString("0.00"));
-                        t.Cell().Element(B).AlignRight().Text(M(l.Rate));
-                        t.Cell().Element(B).AlignRight().Text(M(l.Amount)).SemiBold();
-                    }
-                });
-
-                // totals
-                col.Item().AlignRight().Width(250).Column(c =>
-                {
-                    void Row(string k, string v, bool strong = false) => c.Item().PaddingVertical(2).Row(r =>
-                    {
-                        r.RelativeItem().Text(k).FontColor(strong ? Ink : Muted).FontSize(strong ? 12 : 10).SemiBold();
-                        r.AutoItem().Text(v).FontSize(strong ? 15 : 10).SemiBold().FontColor(strong ? Coral : Ink);
-                    });
-                    Row("Total hours", inv.TotalHours.ToString("0.00"));
-                    Row("Subtotal", M(inv.Subtotal));
-                    if (inv.DiscountAmount != 0) Row($"Discount ({Fmt.Dec(inv.DiscountPercent)}%)", "-" + M(inv.DiscountAmount));
-                    if (inv.TaxAmount != 0 || inv.TaxPercent != 0) Row($"{inv.TaxLabel} ({Fmt.Dec(inv.TaxPercent)}%)", M(inv.TaxAmount));
-                    c.Item().PaddingTop(4).LineHorizontal(0.8f).LineColor(Line);
-                    Row(inv.Status == "Paid" ? "TOTAL PAID" : "TOTAL DUE", M(inv.Total), true);
-                });
-
-                // payment + note
-                col.Item().Column(c =>
-                {
-                    c.Spacing(10);
-                    if (!string.IsNullOrWhiteSpace(inv.PaymentInstructions))
-                        c.Item().Column(x => { x.Item().Text("PAYMENT DETAILS").FontSize(8).SemiBold().FontColor(Faint); x.Item().PaddingTop(3).Text(inv.PaymentInstructions).FontColor(Muted); });
-                    if (!string.IsNullOrWhiteSpace(inv.Note))
-                        c.Item().Text(inv.Note).FontColor(Muted).Italic();
-                });
-            });
-
-            page.Footer().Row(r =>
-            {
-                r.RelativeItem().Text($"Times recorded in {(tz.IsDaylightSavingTime(inv.IssuedUtc) ? tz.DaylightName : tz.StandardName)} (UTC{(tz.GetUtcOffset(inv.IssuedUtc) < TimeSpan.Zero ? "-" : "+")}{tz.GetUtcOffset(inv.IssuedUtc):hh\\:mm})").FontSize(8).FontColor(Faint);
-                r.AutoItem().Text(t => { t.DefaultTextStyle(x => x.FontSize(8).FontColor(Faint)); t.Span("Page "); t.CurrentPageNumber(); t.Span(" of "); t.TotalPages(); });
-            });
-        })).GeneratePdf(path);
+        w.Save(path, $"Invoice {inv.Number}");
     }
 }

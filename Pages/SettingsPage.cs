@@ -127,7 +127,7 @@ public class SettingsPage : PageBase
         var ab = new StackPanel();
         var ver = typeof(SettingsPage).Assembly.GetName().Version?.ToString(3) ?? "";
         ab.Children.Add(Section("About", $"Tempo {ver}. A free, open-source studio time tracker for Windows 11."));
-        ab.Children.Add(Ui.Text("Invoice PDFs are created with QuestPDF, used under its free Community licence (see questpdf.com/license).", 12, "FaintBrush", wrap: true));
+        ab.Children.Add(Ui.Text("Everything, including the invoice PDF writer, is built in. Tempo has no third-party code and makes no network requests.", 12, "FaintBrush", wrap: true));
         root.Children.Add(Block(ab));
 
         // ---------- Shortcuts ----------

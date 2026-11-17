@@ -13,8 +13,6 @@ public partial class App : Application
     {
         base.OnStartup(e);
         Args = e.Args;
-        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
-        QuestPDF.Settings.CheckIfAllTextGlyphsAreAvailable = false;
 
         // One window at a time: two instances would overwrite each other's data file.
         _single = new Mutex(true, "Tempo.Studio.SingleInstance." + State.Dir.GetHashCode(), out bool first);

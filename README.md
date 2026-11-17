@@ -34,7 +34,7 @@ dotnet run
 Single-file release build:
 
 ```bash
-dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
 ```
 
 Pushing a tag such as `v2.1.0` makes GitHub Actions build the exe and attach it to a release (see `.github/workflows/build.yml`).
@@ -56,4 +56,4 @@ $env:TEMPO_DATA_DIR = "$env:TEMP\tempo-demo"
 
 ## Credits
 
-Invoice PDFs are generated with [QuestPDF](https://www.questpdf.com/) under its free Community licence. Tempo itself is MIT licensed (see `LICENSE`).
+Tempo has **no third-party dependencies**. The glass UI, the data layer and the invoice PDF writer (`Pdf.cs`, with embedded font subsetting) are all written in-house on top of .NET and WPF. Tempo is MIT licensed (see `LICENSE`).
