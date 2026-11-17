@@ -26,7 +26,17 @@ public class SettingsPage : PageBase
         material.SelectionChanged += (_, _) => { s.Backdrop = (string)material.SelectedItem; State.Save(); foreach (Window w in Application.Current.Windows) Backdrop.Apply(w); };
         var a = new StackPanel();
         a.Children.Add(Section("Appearance", "Glass material follows Windows 11. Older Windows falls back to a solid look."));
+        var lang = Ui.Combo(Loc.Languages.ToList(), Loc.CurrentLang);
+        lang.SelectionChanged += (_, _) =>
+        {
+            if (lang.SelectedItem is Loc.Lang l && l.Code != Loc.Current)
+            {
+                s.Language = l.Code; Loc.Set(l.Code); State.Save();
+                MainWindow.Instance.RefreshLanguage();
+            }
+        };
         a.Children.Add(Pair(Ui.Field("THEME", theme), Ui.Field("WINDOW MATERIAL", material)));
+        a.Children.Add(Ui.Field("LANGUAGE", lang, 0));
         root.Children.Add(Block(a));
 
         // ---------- Time & region ----------
@@ -35,7 +45,7 @@ public class SettingsPage : PageBase
         zoneClock = Ui.Text("", 12.5, "MutedBrush");
         zone.SelectionChanged += (_, _) =>
         {
-            if (zone.SelectedItem is TimeZoneInfo z) { s.TimeZoneId = z.Id; State.Save(); Tick(); State.Toast("Time zone updated. New and existing entries now display in " + z.StandardName); }
+            if (zone.SelectedItem is TimeZoneInfo z) { s.TimeZoneId = z.Id; State.Save(); Tick(); State.Toast(Loc.F("Time zone updated. New and existing entries now display in {0}", z.StandardName)); }
         };
         var hour = Ui.Combo(new[] { "12-hour", "24-hour" }, s.Use24Hour ? "24-hour" : "12-hour");
         hour.SelectionChanged += (_, _) => { s.Use24Hour = (string)hour.SelectedItem == "24-hour"; State.Save(); };
@@ -84,10 +94,10 @@ public class SettingsPage : PageBase
         pay.LostFocus += (_, _) => { b.PaymentInstructions = pay.Text.Trim(); State.Save(); };
         note.LostFocus += (_, _) => { b.Note = note.Text.Trim(); State.Save(); };
 
-        var logoLbl = Ui.Text(string.IsNullOrEmpty(b.LogoPath) ? "No logo" : Path.GetFileName(b.LogoPath), 13, "MutedBrush");
+        var logoLbl = Ui.Text(string.IsNullOrEmpty(b.LogoPath) ? Loc.T("No logo") : Path.GetFileName(b.LogoPath), 13, "MutedBrush");
         var logoRow = new StackPanel { Orientation = Orientation.Horizontal };
         logoRow.Children.Add(Ui.Btn("Choose logo…", () => PickLogo(b, logoLbl), "GlassButton"));
-        logoRow.Children.Add(Ui.Btn("Remove", () => { b.LogoPath = ""; State.Save(); logoLbl.Text = "No logo"; }, "GhostButton").WithMargin(8, 0, 0, 0));
+        logoRow.Children.Add(Ui.Btn("Remove", () => { b.LogoPath = ""; State.Save(); logoLbl.Text = Loc.T("No logo"); }, "GhostButton").WithMargin(8, 0, 0, 0));
         logoRow.Children.Add(logoLbl.WithMargin(12, 0, 0, 0));
         logoLbl.VerticalAlignment = VerticalAlignment.Center;
 
@@ -114,7 +124,7 @@ public class SettingsPage : PageBase
 
         // ---------- Data ----------
         var dp = new StackPanel();
-        dp.Children.Add(Section("Your data", $"{d.Projects.Count} projects · {d.Sessions.Count} entries · {d.Invoices.Count} invoices. Nothing is ever deleted automatically."));
+        dp.Children.Add(Section("Your data", Loc.F("{0} projects · {1} entries · {2} invoices. Nothing is ever deleted automatically.", d.Projects.Count, d.Sessions.Count, d.Invoices.Count)));
         dp.Children.Add(Ui.Text(State.DataPath, 12, "FaintBrush").WithMargin(0, 0, 0, 12));
         var row = new WrapPanel();
         row.Children.Add(Ui.Btn("Open data folder", () => { try { Process.Start(new ProcessStartInfo(State.Dir) { UseShellExecute = true }); } catch { } }, "GlassButton").WithMargin(0, 0, 8, 8));
@@ -126,19 +136,19 @@ public class SettingsPage : PageBase
         // ---------- About ----------
         var ab = new StackPanel();
         var ver = typeof(SettingsPage).Assembly.GetName().Version?.ToString(3) ?? "";
-        ab.Children.Add(Section("About", $"Tempo {ver}. A free, open-source studio time tracker for Windows 11."));
+        ab.Children.Add(Section("About", Loc.F("Tempo {0}. A free, open-source studio time tracker for Windows 11.", ver)));
         ab.Children.Add(Ui.Text("Everything, including the invoice PDF writer, is built in. Tempo has no third-party code and makes no network requests.", 12, "FaintBrush", wrap: true));
         root.Children.Add(Block(ab));
 
         // ---------- Shortcuts ----------
         var sc = new StackPanel();
         sc.Children.Add(Section("Keyboard shortcuts", ""));
-        foreach (var (k, v) in new[] { ("Ctrl + Space", "Start / pause the timer"), ("Ctrl + 1 … 5", "Jump between pages"), ("Enter / Esc", "Confirm / cancel dialogs") })
+        foreach (var (k, v) in new[] { ("Ctrl + Space", "Start / pause the timer"), ("Ctrl + 1 … 5", "Jump between pages"), ("Ctrl + M", "Switch between full and mini view"), ("Enter / Esc", "Confirm / cancel dialogs") })
         {
             var g = new Grid { Margin = new Thickness(0, 3, 0, 3) };
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) }); g.ColumnDefinitions.Add(new ColumnDefinition());
             g.Children.Add(Ui.Text(k, 13, "TextBrush", FontWeights.SemiBold));
-            var vt = Ui.Text(v, 13, "MutedBrush"); Grid.SetColumn(vt, 1); g.Children.Add(vt);
+            var vt = Ui.Text(Loc.T(v), 13, "MutedBrush"); Grid.SetColumn(vt, 1); g.Children.Add(vt);
             sc.Children.Add(g);
         }
         root.Children.Add(Block(sc));
@@ -150,7 +160,7 @@ public class SettingsPage : PageBase
     public override void Tick()
     {
         if (zoneClock == null) return;
-        zoneClock.Text = $"Current time there: {Fmt.Time(State.NowLocal)}  ·  UTC{State.OffsetText(DateTime.UtcNow)}";
+        zoneClock.Text = Loc.F("Current time there: {0}  ·  UTC{1}", Fmt.Time(State.NowLocal), State.OffsetText(DateTime.UtcNow));
     }
 
     static Border Block(UIElement c) { var b = Ui.Card(c); b.Margin = new Thickness(0, 0, 0, 18); return b; }
@@ -158,8 +168,8 @@ public class SettingsPage : PageBase
     static StackPanel Section(string title, string sub)
     {
         var sp = new StackPanel { Margin = new Thickness(0, 0, 0, 16) };
-        sp.Children.Add(Ui.Text(title, 18, "TextBrush", FontWeights.SemiBold));
-        if (sub.Length > 0) sp.Children.Add(Ui.Text(sub, 13, "MutedBrush", wrap: true).WithMargin(0, 2, 0, 0));
+        sp.Children.Add(Ui.Text(Loc.T(title), 18, "TextBrush", FontWeights.SemiBold));
+        if (sub.Length > 0) sp.Children.Add(Ui.Text(Loc.T(sub), 13, "MutedBrush", wrap: true).WithMargin(0, 2, 0, 0));
         return sp;
     }
 
@@ -191,7 +201,7 @@ public class SettingsPage : PageBase
         var dlg = new SaveFileDialog { Title = "Export backup", Filter = "Tempo backup (*.json)|*.json", FileName = $"tempo-backup-{DateTime.Now:yyyy-MM-dd}.json" };
         if (dlg.ShowDialog() != true) return;
         try { File.Copy(State.DataPath, dlg.FileName, true); State.Toast("Backup saved"); }
-        catch (Exception ex) { State.Toast("Backup failed: " + ex.Message, true); }
+        catch (Exception ex) { State.Toast(Loc.T("Backup failed: ") + ex.Message, true); }
     }
 
     static void RestoreBackup()
@@ -202,7 +212,7 @@ public class SettingsPage : PageBase
         try { ws = JsonSerializer.Deserialize<Workspace>(File.ReadAllText(dlg.FileName), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }); }
         catch { State.Toast("That file isn't a valid Tempo backup.", true); return; }
         if (ws == null) { State.Toast("That file isn't a valid Tempo backup.", true); return; }
-        if (!Dialogs.Confirm("Restore backup", $"Replace your current data with this backup ({ws.Projects?.Count ?? 0} projects, {ws.Sessions?.Count ?? 0} entries)? Your current data is saved as a .bak copy first.", "Restore", true)) return;
+        if (!Dialogs.Confirm("Restore backup", Loc.F("Replace your current data with this backup ({0} projects, {1} entries)? Your current data is saved as a .bak copy first.", ws.Projects?.Count ?? 0, ws.Sessions?.Count ?? 0), "Restore", true)) return;
         State.Save();
         try { File.Copy(State.DataPath, State.DataPath + ".before-restore", true); } catch { }
         State.Data = ws; State.Normalize(); App.ApplyTheme();

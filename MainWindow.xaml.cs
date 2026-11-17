@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     bool navigating, longWarned, prompting;
     DateTime? idleSince;
     TrayService? tray;
+    MiniWindow? mini;
 
     static readonly (string Key, string Title, string Icon)[] Pages =
     {
@@ -39,7 +40,7 @@ public partial class MainWindow : Window
         int i = 1;
         foreach (var (key, title, icon) in Pages)
         {
-            var rb = new RadioButton { Content = title, Tag = icon, Style = (Style)FindResource("NavButton"), GroupName = "nav", ToolTip = $"{title} (Ctrl+{i})" };
+            var rb = new RadioButton { Content = Loc.T(title), Tag = icon, Style = (Style)FindResource("NavButton"), GroupName = "nav", ToolTip = $"{Loc.T(title)} (Ctrl+{i})" };
             var k = key;
             rb.Checked += (_, _) => { if (!navigating) Navigate(k); };
             Nav.Children.Add(rb);
@@ -47,6 +48,22 @@ public partial class MainWindow : Window
             i++;
         }
 
+        Topmost = State.Data.Settings.MainPinned;
+        var miniBtn = Ui.Btn("Mini timer", ShowMini, "GlassButton", Icons.Mini, "Mini timer (Ctrl+M)");
+        var pinBtn = Ui.Btn("", () => { }, "GlassButton", Icons.Pin, "Keep on top");
+        pinBtn.Padding = new Thickness(11, 9, 11, 9);
+        pinBtn.Margin = new Thickness(8, 0, 0, 0);
+        void PaintPin() => pinBtn.Content = Ui.Icon(Icons.Pin, 16, Topmost ? "AccentBrush" : "MutedBrush");
+        PaintPin();
+        pinBtn.Click += (_, _) => { Topmost = !Topmost; State.Data.Settings.MainPinned = Topmost; State.Save(); PaintPin(); };
+        var viewRow = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+        viewRow.ColumnDefinitions.Add(new ColumnDefinition());
+        viewRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        viewRow.Children.Add(miniBtn);
+        Grid.SetColumn(pinBtn, 1); viewRow.Children.Add(pinBtn);
+        DockPanel.SetDock(viewRow, Dock.Bottom);
+        SidebarDock.Children.Insert(SidebarDock.Children.Count - 1, viewRow);
+        ApplyChrome();
         State.Changed += OnChanged;
         State.ToastRequested += ShowToast;
         tick.Tick += (_, _) => OnTick();
@@ -58,9 +75,31 @@ public partial class MainWindow : Window
             State.Save();
             if (State.Data.Settings.CloseToTray && !tray!.Quitting) { e.Cancel = true; Hide(); }
         };
-        Closed += (_, _) => tray?.Dispose();
+        Closed += (_, _) => { mini?.Shutdown(); tray?.Dispose(); };
         Navigate("Overview");
         UpdateMini();
+    }
+
+    void ApplyChrome()
+    {
+        Tagline.Text = Loc.T("Studio time tracker");
+        WorkspaceLabel.Text = Loc.T("WORKSPACE");
+        MiniTimer.ToolTip = Loc.T("Open timer");
+        int i = 1;
+        foreach (var (key, title, _) in Pages)
+        {
+            nav[key].Content = Loc.T(title);
+            nav[key].ToolTip = $"{Loc.T(title)} (Ctrl+{i})";
+            i++;
+        }
+    }
+
+    /// <summary>Re-applies the current language to the whole window without restarting.</summary>
+    public void RefreshLanguage()
+    {
+        ApplyChrome();
+        UpdateMini();
+        Navigate(currentKey == "" ? "Overview" : currentKey);
     }
 
     public void Navigate(string key)
@@ -85,6 +124,25 @@ public partial class MainWindow : Window
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
         PageHost.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)) { EasingFunction = ease });
         slide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(12, 0, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease });
+    }
+
+    /// <summary>Switch to the small always-on-top timer (the full window is hidden, nothing is lost).</summary>
+    public void ShowMini()
+    {
+        mini ??= new MiniWindow();
+        mini.Prepare();
+        Hide();
+        mini.Show();
+        mini.Activate();
+    }
+
+    /// <summary>Back to the full window.</summary>
+    public void ShowFull()
+    {
+        if (mini is { IsVisible: true }) { mini.SavePosition(); mini.Hide(); }
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
     }
 
     public void OpenInvoiceFor(string projectId)
@@ -123,7 +181,7 @@ public partial class MainWindow : Window
         if (!State.HasTimer || currentKey == "Overview") { MiniTimer.Visibility = Visibility.Collapsed; return; }
         MiniTimer.Visibility = Visibility.Visible;
         MiniClock.Text = Fmt.Clock(State.ElapsedMs);
-        MiniState.Text = State.Running ? "TIMER RUNNING" : "TIMER PAUSED";
+        MiniState.Text = Loc.T(State.Running ? "TIMER RUNNING" : "TIMER PAUSED");
         MiniDot.Opacity = State.Running ? 1 : 0.4;
         var p = State.Proj(State.Data.Timer.ProjectId);
         MiniProject.Text = p?.Name ?? "";
@@ -134,7 +192,8 @@ public partial class MainWindow : Window
     void OnKey(object sender, KeyEventArgs e)
     {
         if (Keyboard.Modifiers != ModifierKeys.Control) return;
-        if (e.Key == Key.Space)
+        if (e.Key == Key.M) { e.Handled = true; ShowMini(); }
+        else if (e.Key == Key.Space)
         {
             e.Handled = true;
             ToggleTimerShortcut();
@@ -173,12 +232,12 @@ public partial class MainWindow : Window
         prompting = true;
         try
         {
-            if (!IsVisible) tray?.Show();
+            
             var away = DateTime.UtcNow - sinceUtc;
             var opts = new[] { "Keep the time", "Remove idle time and keep going", "Remove idle time and stop the timer" };
             var pick = Ui.Combo(opts, opts[1]);
             var body = new StackPanel();
-            body.Children.Add(Ui.Text($"You were away for {Fmt.Hm((long)away.TotalMilliseconds)} (since {Fmt.Time(State.ToLocal(sinceUtc))}). Your timer kept running.", 14, "MutedBrush", wrap: true).WithMargin(0, 0, 0, 14));
+            body.Children.Add(Ui.Text(Loc.F("You were away for {0} (since {1}). Your timer kept running.", Fmt.Hm((long)away.TotalMilliseconds), Fmt.Time(State.ToLocal(sinceUtc))), 14, "MutedBrush", wrap: true).WithMargin(0, 0, 0, 14));
             body.Children.Add(Ui.Field("WHAT SHOULD TEMPO DO?", pick, 6));
             Dialogs.Show("Welcome back", body, "Apply", () =>
             {
@@ -192,7 +251,7 @@ public partial class MainWindow : Window
 
     public void ShowToast(string message, bool error = false)
     {
-        ToastText.Text = message;
+        ToastText.Text = Loc.T(message);
         ToastDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, error ? "WarnBrush" : "GoodBrush");
         var a = new DoubleAnimationUsingKeyFrames();
         a.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));

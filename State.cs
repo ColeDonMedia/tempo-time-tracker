@@ -19,7 +19,7 @@ public static class State
     public static event Action? Changed;
     public static event Action<string, bool>? ToastRequested;
 
-    public static void Toast(string message, bool error = false) => ToastRequested?.Invoke(message, error);
+    public static void Toast(string message, bool error = false) => ToastRequested?.Invoke(Loc.T(message), error);
 
     // ---------- persistence ----------
     public static void Load()
@@ -79,7 +79,7 @@ public static class State
         }
         catch (Exception ex)
         {
-            Toast("Tempo could not save your data: " + ex.Message, true);
+            Toast(Loc.T("Tempo could not save your data: ") + ex.Message, true);
             return false;
         }
     }
@@ -253,12 +253,12 @@ public static class Fmt
     public static string Clock(long ms) { var s = ms / 1000; return $"{s / 3600:00}:{s / 60 % 60:00}:{s % 60:00}"; }
     public static string Time(DateTime local) =>
         local.ToString(State.Data.Settings.Use24Hour ? "HH:mm" : "h:mm tt", CultureInfo.CurrentCulture);
-    public static string Date(DateTime d) => d.ToString("MMM d, yyyy", CultureInfo.CurrentCulture);
+    public static string Date(DateTime d, string? lang = null) => d.ToString(Loc.DatePattern(lang), Loc.Culture(lang));
     public static string DayHeading(DateTime d)
     {
         var t = State.TodayLocal;
-        if (d.Date == t) return "Today";
-        if (d.Date == t.AddDays(-1)) return "Yesterday";
+        if (d.Date == t) return Loc.T("Today");
+        if (d.Date == t.AddDays(-1)) return Loc.T("Yesterday");
         return d.ToString(d.Year == t.Year ? "dddd, MMM d" : "dddd, MMM d, yyyy", CultureInfo.CurrentCulture);
     }
     public static string Dec(decimal v) => v.ToString("0.##", CultureInfo.InvariantCulture);

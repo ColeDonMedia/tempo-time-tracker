@@ -23,7 +23,7 @@ public class EntriesPage : PageBase
             Ui.Btn("Export CSV", ExportCsv, "GlassButton", Icons.Download)));
 
         // ---- filters ----
-        var projects = new List<Project> { new() { Id = "", Name = "All projects" } };
+        var projects = new List<Project> { new() { Id = "", Name = Loc.T("All projects") } };
         projects.AddRange(d.Projects);
         var pc = Ui.Combo(projects, projects.FirstOrDefault(p => p.Id == (projectFilter ?? "")), "Name");
         pc.MinWidth = 220;
@@ -68,7 +68,7 @@ public class EntriesPage : PageBase
                 State.Data.Sessions.Count == 0 ? "Start a timer or add an entry by hand to record your work." : "Try clearing the search or choosing All projects."));
             return;
         }
-        var summary = Ui.Text($"{all.Count} entr{(all.Count == 1 ? "y" : "ies")}  ·  {Fmt.Hm(all.Sum(s => s.DurationMilliseconds))}  ·  {Fmt.Money(all.Sum(State.Earned))}", 13, "MutedBrush");
+        var summary = Ui.Text(Loc.N(all.Count, "{0} entry  ·  {1}  ·  {2}", "{0} entries  ·  {1}  ·  {2}", Fmt.Hm(all.Sum(s => s.DurationMilliseconds)), Fmt.Money(all.Sum(State.Earned))), 13, "MutedBrush");
         summary.Margin = new Thickness(10, 4, 0, 6);
         list.Children.Add(summary);
 
@@ -89,7 +89,7 @@ public class EntriesPage : PageBase
             list.Children.Add(SessionRow(s, true));
         }
         if (all.Count > limit)
-            list.Children.Add(Ui.Btn($"Show {Math.Min(120, all.Count - limit)} more", () => { limit += 120; FillList(list); }, "GhostButton").Center().WithMargin(0, 10, 0, 4));
+            list.Children.Add(Ui.Btn(Loc.F("Show {0} more", Math.Min(120, all.Count - limit)), () => { limit += 120; FillList(list); }, "GhostButton").Center().WithMargin(0, 10, 0, 4));
     }
 
     public static Border SessionRow(Session s, bool actions)
@@ -107,8 +107,8 @@ public class EntriesPage : PageBase
 
         var ls = State.ToLocal(s.StartedAtUtc); var le = State.ToLocal(s.EndedAtUtc);
         var mid = new StackPanel();
-        mid.Children.Add(Ui.Text(string.IsNullOrWhiteSpace(s.Task) ? "Work session" : s.Task, 14.5, "TextBrush", FontWeights.SemiBold));
-        var sub = $"{(p?.Name ?? "Deleted project")}{(string.IsNullOrWhiteSpace(p?.Client) ? "" : " · " + p!.Client)}  ·  {(actions ? "" : ls.ToString("MMM d", CultureInfo.CurrentCulture) + ", ")}{Fmt.Time(ls)} – {Fmt.Time(le)}";
+        mid.Children.Add(Ui.Text(string.IsNullOrWhiteSpace(s.Task) ? Loc.T("Work session") : s.Task, 14.5, "TextBrush", FontWeights.SemiBold));
+        var sub = $"{(p?.Name ?? Loc.T("Deleted project"))}{(string.IsNullOrWhiteSpace(p?.Client) ? "" : " · " + p!.Client)}  ·  {(actions ? "" : ls.ToString(Loc.ShortMonthDay(), CultureInfo.CurrentCulture) + ", ")}{Fmt.Time(ls)} – {Fmt.Time(le)}";
         mid.Children.Add(Ui.Text(sub, 12.5, "MutedBrush"));
         Grid.SetColumn(mid, 1); g.Children.Add(mid);
 
@@ -127,7 +127,7 @@ public class EntriesPage : PageBase
             {
                 var msg = s.InvoiceId == null
                     ? "Delete this time entry? This can't be undone."
-                    : $"This entry was billed on {inv?.Number ?? "an invoice"}. Deleting it won't change that invoice (it keeps its own copy of the lines), but the entry will be gone from your log. This can't be undone.";
+                    : Loc.F("This entry was billed on {0}. Deleting it won't change that invoice (it keeps its own copy of the lines), but the entry will be gone from your log. This can't be undone.", inv?.Number ?? Loc.T("an invoice"));
                 if (Dialogs.Confirm("Delete entry", msg, "Delete", true))
                 { State.Data.Sessions.Remove(s); State.Notify(); State.Toast("Entry deleted"); }
             }, true));
@@ -171,7 +171,7 @@ public class EntriesPage : PageBase
         body.Children.Add(Ui.Field("PROJECT", pc));
         body.Children.Add(Ui.Field("DESCRIPTION", task));
         body.Children.Add(row); body.Children.Add(row2);
-        body.Children.Add(Ui.Text($"Times are in {State.Tz.StandardName} (change in Settings).", 12, "FaintBrush").WithMargin(0, -4, 0, 12));
+        body.Children.Add(Ui.Text(Loc.F("Times are in {0} (change in Settings).", State.Tz.StandardName), 12, "FaintBrush").WithMargin(0, -4, 0, 12));
         body.Children.Add(err);
 
         Dialogs.Show(editing == null ? "Add time entry" : "Edit time entry", body, editing == null ? "Add entry" : "Save changes", () =>
@@ -229,16 +229,16 @@ public class EntriesPage : PageBase
             sb.AppendLine(string.Join(",",
                 Q(ls.ToString("yyyy-MM-dd", inv)), Q(ls.ToString("HH:mm", inv)), Q(le.ToString("HH:mm", inv)),
                 Q(State.Tz.Id), Q(State.OffsetText(s.StartedAtUtc)), Q(s.StartedAtUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", inv)),
-                Q(p?.Name ?? "Deleted project"), Q(p?.Client ?? ""), Q(s.Task ?? ""),
+                Q(p?.Name ?? Loc.T("Deleted project")), Q(p?.Client ?? ""), Q(s.Task ?? ""),
                 (s.DurationMilliseconds / 3600000m).ToString("0.0000", inv), s.HourlyRate.ToString("0.00", inv),
                 State.Earned(s).ToString("0.00", inv), State.Data.Settings.CurrencyCode, Q(invoice)));
         }
         try
         {
             File.WriteAllText(dlg.FileName, sb.ToString(), new UTF8Encoding(true));
-            State.Toast($"Exported {rows.Count} entries");
+            State.Toast(Loc.F("Exported {0} entries", rows.Count));
         }
-        catch (Exception ex) { State.Toast("Export failed: " + ex.Message, true); }
+        catch (Exception ex) { State.Toast(Loc.T("Export failed: ") + ex.Message, true); }
     }
 
     /// <summary>Quote a cell and neutralise spreadsheet formulas (=, +, -, @) so imported text can't run as code.</summary>

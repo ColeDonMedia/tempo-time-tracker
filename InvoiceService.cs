@@ -66,7 +66,8 @@ public static class InvoiceService
         TimeZoneInfo tz;
         try { tz = TimeZoneInfo.FindSystemTimeZoneById(inv.TimeZoneId); } catch { tz = TimeZoneInfo.Local; }
         DateTime L(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), tz);
-        string D(DateTime d) => d.ToString("MMM d, yyyy");
+        string D(DateTime d) => Fmt.Date(d, inv.Language);
+        string Tr(string s) => Loc.For(inv.Language, s);
         string Mo(decimal v) => Fmt.Money(v, inv.Currency);
 
         var w = new PdfWriter();
@@ -92,37 +93,37 @@ public static class InvoiceService
             page.Image(logo, M, y, logo.Width * k, logo.Height * k);
             leftX += 66;
         }
-        var name = string.IsNullOrWhiteSpace(inv.StudioName) ? "Your studio" : inv.StudioName;
+        var name = string.IsNullOrWhiteSpace(inv.StudioName) ? Tr("Your studio") : inv.StudioName;
         double ny = Para(page, leftX, y, cw * 0.55 - (leftX - M), name, 17, true, Ink);
         if (!string.IsNullOrWhiteSpace(inv.StudioEmail)) ny = Para(page, leftX, ny + 1, cw * 0.55, inv.StudioEmail, 10, false, Muted);
         double right = M + cw;
-        page.TextRight(right, y - 2, "INVOICE", 26, true, Coral);
+        page.TextRight(right, y - 2, Tr("INVOICE"), 26, true, Coral);
         page.TextRight(right, y + 34, inv.Number, 12, true, Ink);
-        if (inv.Status == "Paid") page.TextRight(right, y + 52, "PAID" + (inv.PaidUtc is DateTime pd ? "  " + D(L(pd)) : ""), 10, true, Green);
-        else if (inv.Status == "Void") page.TextRight(right, y + 52, "VOID", 10, true, Faint);
+        if (inv.Status == "Paid") page.TextRight(right, y + 52, Tr("PAID") + (inv.PaidUtc is DateTime pd ? "  " + D(L(pd)) : ""), 10, true, Green);
+        else if (inv.Status == "Void") page.TextRight(right, y + 52, Tr("VOID"), 10, true, Faint);
         y = Math.Max(ny, y + 70) + 12;
         page.Line(M, y, M + cw, y, 0.8, Rule);
         y += 18;
 
         // ---- parties + details ----
-        double detW = 190, colW = (cw - detW - 24) / 2;
+        double detW = 225, colW = (cw - detW - 24) / 2;
         double yb = y, yf = y, yd = y;
-        page.Text(M, yb, "BILL TO", 8, true, Faint); yb += 13;
+        page.Text(M, yb, Tr("BILL TO"), 8, true, Faint); yb += 13;
         yb = Para(page, M, yb, colW, inv.ClientName, 11, true, Ink);
         yb = Para(page, M, yb, colW, inv.ProjectName, 10, false, Muted);
         if (!string.IsNullOrWhiteSpace(inv.ClientEmail)) yb = Para(page, M, yb, colW, inv.ClientEmail, 10, false, Muted);
         if (!string.IsNullOrWhiteSpace(inv.ClientAddress)) yb = Para(page, M, yb, colW, inv.ClientAddress, 10, false, Muted);
         double fx = M + colW + 12;
-        page.Text(fx, yf, "FROM", 8, true, Faint); yf += 13;
+        page.Text(fx, yf, Tr("FROM"), 8, true, Faint); yf += 13;
         if (!string.IsNullOrWhiteSpace(inv.StudioAddress)) yf = Para(page, fx, yf, colW, inv.StudioAddress, 10, false, Muted);
-        if (!string.IsNullOrWhiteSpace(inv.TaxId)) yf = Para(page, fx, yf, colW, "Tax ID: " + inv.TaxId, 10, false, Muted);
+        if (!string.IsNullOrWhiteSpace(inv.TaxId)) yf = Para(page, fx, yf, colW, Tr("Tax ID: ") + inv.TaxId, 10, false, Muted);
         double dx = M + cw - detW;
         void Kv(string k, string v) { page.Text(dx, yd, k, 10, false, Faint); page.TextRight(dx + detW, yd, v, 10, true, Ink); yd += 14; }
-        Kv("Issued", D(L(inv.IssuedUtc)));
-        Kv("Due", D(L(inv.DueUtc)));
-        Kv("Period", $"{inv.PeriodFrom:MMM d} – {inv.PeriodTo:MMM d, yyyy}");
-        if (!string.IsNullOrWhiteSpace(inv.PoNumber)) Kv("PO number", inv.PoNumber);
-        Kv("Currency", inv.Currency);
+        Kv(Tr("Issued date"), D(L(inv.IssuedUtc)));
+        Kv(Tr("Due date"), D(L(inv.DueUtc)));
+        Kv(Tr("Period"), D(inv.PeriodFrom) + " – " + D(inv.PeriodTo));
+        if (!string.IsNullOrWhiteSpace(inv.PoNumber)) Kv(Tr("PO number"), inv.PoNumber);
+        Kv(Tr("Currency"), inv.Currency);
         y = Math.Max(yb, Math.Max(yf, yd)) + 24;
 
         // ---- line items ----
@@ -130,10 +131,10 @@ public static class InvoiceService
         double x1 = M + c0 + c1, x2 = x1 + c2, x3 = x2 + c3;
         void TableHeader()
         {
-            page.Text(M, y, "DESCRIPTION", 8, true, Faint);
-            page.TextRight(M + c0 + c1, y, "HOURS", 8, true, Faint);
-            page.TextRight(x2, y, "RATE", 8, true, Faint);
-            page.TextRight(x3, y, "AMOUNT", 8, true, Faint);
+            page.Text(M, y, Tr("DESCRIPTION"), 8, true, Faint);
+            page.TextRight(M + c0 + c1, y, Tr("HOURS"), 8, true, Faint);
+            page.TextRight(x2, y, Tr("RATE"), 8, true, Faint);
+            page.TextRight(x3, y, Tr("AMOUNT"), 8, true, Faint);
             y += 16;
             page.Line(M, y, M + cw, y, 1, HeadRule);
         }
@@ -157,10 +158,10 @@ public static class InvoiceService
         }
 
         // ---- totals ----
-        var rows = new List<(string K, string V, bool Big)> { ("Total hours", inv.TotalHours.ToString("0.00"), false), ("Subtotal", Mo(inv.Subtotal), false) };
-        if (inv.DiscountAmount != 0) rows.Add(($"Discount ({Fmt.Dec(inv.DiscountPercent)}%)", "-" + Mo(inv.DiscountAmount), false));
-        if (inv.TaxAmount != 0 || inv.TaxPercent != 0) rows.Add(($"{inv.TaxLabel} ({Fmt.Dec(inv.TaxPercent)}%)", Mo(inv.TaxAmount), false));
-        rows.Add((inv.Status == "Paid" ? "TOTAL PAID" : "TOTAL DUE", Mo(inv.Total), true));
+        var rows = new List<(string K, string V, bool Big)> { (Tr("Total hours"), inv.TotalHours.ToString("0.00"), false), (Tr("Subtotal"), Mo(inv.Subtotal), false) };
+        if (inv.DiscountAmount != 0) rows.Add((Loc.FFor(inv.Language, "Discount ({0}%)", Fmt.Dec(inv.DiscountPercent)), "-" + Mo(inv.DiscountAmount), false));
+        if (inv.TaxAmount != 0 || inv.TaxPercent != 0) rows.Add(($"{Tr(inv.TaxLabel)} ({Fmt.Dec(inv.TaxPercent)}%)", Mo(inv.TaxAmount), false));
+        rows.Add((Tr(inv.Status == "Paid" ? "TOTAL PAID" : "TOTAL DUE"), Mo(inv.Total), true));
         double totH = rows.Count * 18 + 30;
         y += 18;
         if (y + totH > limit) { page = w.AddPage(PW, PH); y = M; }
@@ -179,7 +180,7 @@ public static class InvoiceService
         {
             var pl = w.Wrap(inv.PaymentInstructions, cw, 10, false);
             if (y + 20 + pl.Count * 13.5 > limit) { page = w.AddPage(PW, PH); y = M; }
-            page.Text(M, y, "PAYMENT DETAILS", 8, true, Faint); y += 13;
+            page.Text(M, y, Tr("PAYMENT DETAILS"), 8, true, Faint); y += 13;
             y = Para(page, M, y, cw, inv.PaymentInstructions, 10, false, Muted) + 12;
         }
         if (!string.IsNullOrWhiteSpace(inv.Note))
@@ -192,14 +193,14 @@ public static class InvoiceService
         // ---- footers (need the final page count) ----
         var zone = tz.IsDaylightSavingTime(inv.IssuedUtc) ? tz.DaylightName : tz.StandardName;
         var off = tz.GetUtcOffset(inv.IssuedUtc);
-        var tzNote = $"Times recorded in {zone} (UTC{(off < TimeSpan.Zero ? "-" : "+")}{off:hh\\:mm})";
+        var tzNote = Loc.FFor(inv.Language, "Times recorded in {0} (UTC{1})", zone, (off < TimeSpan.Zero ? "-" : "+") + off.ToString("hh\\:mm"));
         for (int i = 0; i < w.PageCount; i++)
         {
             var pg = w.PageAt(i);
             pg.Text(M, PH - M + 6, tzNote, 8, false, Faint);
-            pg.TextRight(M + cw, PH - M + 6, $"Page {i + 1} of {w.PageCount}", 8, false, Faint);
+            pg.TextRight(M + cw, PH - M + 6, Loc.FFor(inv.Language, "Page {0} of {1}", i + 1, w.PageCount), 8, false, Faint);
         }
 
-        w.Save(path, $"Invoice {inv.Number}");
+        w.Save(path, Loc.FFor(inv.Language, "Invoice {0}", inv.Number));
     }
 }

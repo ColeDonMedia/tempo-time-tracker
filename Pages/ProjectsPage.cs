@@ -48,9 +48,9 @@ public class ProjectsPage : PageBase
         top.Children.Add(dot);
         var names = new StackPanel();
         names.Children.Add(Ui.Text(p.Name, 17, "TextBrush", FontWeights.SemiBold));
-        names.Children.Add(Ui.Text(string.IsNullOrWhiteSpace(p.Client) ? "No client set" : "for " + p.Client, 13, "MutedBrush"));
+        names.Children.Add(Ui.Text(string.IsNullOrWhiteSpace(p.Client) ? Loc.T("No client set") : Loc.F("for {0}", p.Client), 13, "MutedBrush"));
         Grid.SetColumn(names, 1); top.Children.Add(names);
-        var rate = Ui.Pill($"{Fmt.Money(p.HourlyRate)} / hr", "TextBrush", "FieldBrush");
+        var rate = Ui.Pill(Loc.F("{0} / hr", Fmt.Money(p.HourlyRate)), "TextBrush", "FieldBrush");
         Grid.SetColumn(rate, 2); top.Children.Add(rate);
         sp.Children.Add(top);
 
@@ -71,7 +71,7 @@ public class ProjectsPage : PageBase
             actions.Children.Add(Ui.IconBtn(Icons.Archive, "Archive project", () =>
             {
                 if (State.Running && d.Timer.ProjectId == p.Id) { State.Toast("This project's timer is running", true); return; }
-                p.Archived = true; State.Notify(); State.Toast($"{p.Name} archived. Its entries and invoices are kept.");
+                p.Archived = true; State.Notify(); State.Toast(Loc.F("{0} archived. Its entries and invoices are kept.", p.Name));
             }).WithMargin(0, 0, 2, 6));
             actions.Children.Add(Ui.IconBtn(Icons.Trash, "Delete project", () => DeleteProject(p), true).WithMargin(0, 0, 2, 6));
         }
@@ -83,13 +83,13 @@ public class ProjectsPage : PageBase
         foreach (var ch in actions.Children.OfType<Button>())
         {
             bool labelled = ch.Content is StackPanel panel && panel.Children.Count > 1;
-            ch.Padding = labelled ? new Thickness(12, 8, 12, 8) : new Thickness(6);
+            ch.Padding = labelled ? new Thickness(10, 8, 10, 8) : new Thickness(4);
             if (!labelled) ch.Margin = new Thickness(0, 0, 0, 6);
         }
         sp.Children.Add(actions);
 
         var c = Ui.Card(sp, 16);
-        c.Width = 328; c.Margin = new Thickness(0, 0, 16, 16);
+        c.Width = 336; c.Margin = new Thickness(0, 0, 14, 16);
         if (p.Archived) c.Opacity = 0.7;
         return c;
     }
@@ -101,16 +101,21 @@ public class ProjectsPage : PageBase
         var ss = d.Sessions.Where(s => s.ProjectId == p.Id).ToList();
         var invCount = d.Invoices.Count(i => i.ProjectId == p.Id);
         var billed = ss.Count(s => s.InvoiceId != null);
-        var msg = $"Permanently delete “{p.Name}”?";
-        if (ss.Count > 0) msg += $"\n\nThis also deletes its {ss.Count} time entr{(ss.Count == 1 ? "y" : "ies")} ({Fmt.Hm(ss.Sum(s => s.DurationMilliseconds))}){(billed > 0 ? $", {billed} of them already billed" : "")}.";
-        if (invCount > 0) msg += $"\n\nIts {invCount} invoice record{(invCount == 1 ? " is" : "s are")} kept in Invoices history (delete them there if you want them gone too).";
-        msg += "\n\nThis can't be undone. Archiving hides a project without deleting anything.";
+        var msg = Loc.F("Permanently delete “{0}”?", p.Name);
+        if (ss.Count > 0)
+        {
+            msg += "\n\n" + Loc.N(ss.Count, "This also deletes its {0} time entry ({1}).", "This also deletes its {0} time entries ({1}).", Fmt.Hm(ss.Sum(s => s.DurationMilliseconds)));
+            if (billed > 0) msg += " " + Loc.F("{0} of them are already billed.", billed);
+        }
+        if (invCount > 0)
+            msg += "\n\n" + Loc.N(invCount, "Its {0} invoice record is kept in Invoices history (delete it there if you want it gone too).", "Its {0} invoice records are kept in Invoices history (delete them there if you want them gone too).");
+        msg += "\n\n" + Loc.T("This can't be undone. Archiving hides a project without deleting anything.");
         if (!Dialogs.Confirm("Delete project", msg, "Delete project", true)) return;
         d.Sessions.RemoveAll(s => s.ProjectId == p.Id);
         d.Projects.Remove(p);
         if (d.Timer.ProjectId == p.Id) d.Timer.ProjectId = null;
         State.Notify();
-        State.Toast($"Project “{p.Name}” deleted");
+        State.Toast(Loc.F("Project “{0}” deleted", p.Name));
     }
 
     sealed class UniformGridLike
@@ -122,7 +127,7 @@ public class ProjectsPage : PageBase
             {
                 g.ColumnDefinitions.Add(new ColumnDefinition());
                 var s = new StackPanel();
-                s.Children.Add(Ui.Text(items[i].Label, 10.5, "FaintBrush", FontWeights.SemiBold));
+                s.Children.Add(Ui.Text(Loc.T(items[i].Label), 10.5, "FaintBrush", FontWeights.SemiBold));
                 s.Children.Add(Ui.Text(items[i].Value, 16, "TextBrush", FontWeights.SemiBold).WithMargin(0, 2, 0, 0));
                 Grid.SetColumn(s, i); g.Children.Add(s);
             }
@@ -161,7 +166,7 @@ public class ProjectsPage : PageBase
         body.Children.Add(Ui.Field("PERSON OR BRAND (BILL TO)", client));
         body.Children.Add(Ui.Field("CLIENT EMAIL (OPTIONAL)", email));
         body.Children.Add(Ui.Field("CLIENT ADDRESS (OPTIONAL)", address));
-        body.Children.Add(Ui.Field($"HOURLY RATE ({cur})", rate));
+        body.Children.Add(Ui.Field(Loc.F("HOURLY RATE ({0})", cur), rate));
         body.Children.Add(Ui.Field("COLOUR", swatches));
         body.Children.Add(err);
 
@@ -175,7 +180,7 @@ public class ProjectsPage : PageBase
             p.ClientAddress = address.Text.Trim(); p.HourlyRate = Math.Round(r, 2); p.Color = color;
             if (editing == null) State.Data.Projects.Add(p);
             State.Notify();
-            State.Toast(editing == null ? $"Project “{p.Name}” created" : "Project updated");
+            State.Toast(editing == null ? Loc.F("Project “{0}” created", p.Name) : "Project updated");
             return true;
         }, 500);
     }

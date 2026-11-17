@@ -32,6 +32,12 @@ public partial class App : Application
         };
 
         State.Load();
+        Loc.Init();
+        if (Args.Contains("--lang") && Environment.GetEnvironmentVariable("TEMPO_DATA_DIR") != null)
+        {
+            var li = Array.IndexOf(Args, "--lang");
+            if (li + 1 < Args.Length) { State.Data.Settings.Language = Args[li + 1]; Loc.Set(Args[li + 1]); }
+        }
         if (Args.Contains("--demo") && Environment.GetEnvironmentVariable("TEMPO_DATA_DIR") != null)
             DemoData.Seed();
         if (Args.Contains("--make-icon"))
@@ -47,7 +53,7 @@ public partial class App : Application
             var b = State.Data.Billing;
             var sample = new Invoice
             {
-                Number = "INV-2026-003", ProjectId = pr.Id, ProjectName = pr.Name, ClientName = pr.Client, ClientEmail = "billing@orbitlabs.example",
+                Language = Loc.Current, Number = "INV-2026-003", ProjectId = pr.Id, ProjectName = pr.Name, ClientName = pr.Client, ClientEmail = "billing@orbitlabs.example",
                 ClientAddress = "400 Market Street, Suite 12\nSan Francisco, CA 94111", PoNumber = "PO-7731",
                 IssuedUtc = DateTime.UtcNow, DueUtc = DateTime.UtcNow.AddDays(14), PeriodFrom = State.TodayLocal.AddDays(-30), PeriodTo = State.TodayLocal,
                 TimeZoneId = State.Tz.Id, Currency = "USD", Lines = lines, TaxLabel = "Sales tax", TaxPercent = 8.5m,
@@ -93,8 +99,8 @@ public partial class App : Application
     static async void RunShots(MainWindow win, string dir)
     {
         System.IO.Directory.CreateDirectory(dir);
-        var prefix = IsDark ? "dark" : "light";
-        foreach (var (key, name) in new[] { ("Overview", "overview"), ("Projects", "projects"), ("Entries", "entries"), ("Invoices", "invoices") })
+        var prefix = (Loc.Current == "en" ? "" : Loc.Current + "-") + (IsDark ? "dark" : "light");
+        foreach (var (key, name) in new[] { ("Overview", "overview"), ("Projects", "projects"), ("Entries", "entries"), ("Invoices", "invoices"), ("Settings", "settings") })
         {
             win.Navigate(key);
             await Task.Delay(1200);
@@ -110,6 +116,24 @@ public partial class App : Application
             using var fs = System.IO.File.Create(System.IO.Path.Combine(dir, $"{prefix}-{name}.png"));
             enc.Save(fs);
         }
+        // the compact view, with a demo timer running
+        var t = State.Data.Timer;
+        t.ProjectId = State.Data.Projects.FirstOrDefault()?.Id; t.Task = "Brand sketches";
+        t.AccumulatedMilliseconds = 4_320_000; t.StartedAtUtc = DateTime.UtcNow.AddHours(-1); t.RunSinceUtc = DateTime.UtcNow;
+        var miniWin = new MiniWindow { Left = -6000, Top = 0 };
+        miniWin.Show();
+        await Task.Delay(1200);
+        var mroot = (FrameworkElement)miniWin.Content;
+        mroot.UpdateLayout();
+        int mw = (int)mroot.ActualWidth, mh = (int)mroot.ActualHeight;
+        var mrtb = new System.Windows.Media.Imaging.RenderTargetBitmap(mw, mh, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        var mbg = new System.Windows.Media.DrawingVisual();
+        using (var dc = mbg.RenderOpen()) dc.DrawRectangle(miniWin.Background, null, new Rect(0, 0, mw, mh));
+        mrtb.Render(mbg); mrtb.Render(mroot);
+        var menc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        menc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(mrtb));
+        using (var mfs = System.IO.File.Create(System.IO.Path.Combine(dir, $"{prefix}-mini.png"))) menc.Save(mfs);
+        miniWin.Shutdown();
         Current.Shutdown();
     }
 

@@ -60,9 +60,9 @@ public class InvoicesPage : PageBase
         form.Children.Add(Ui.Field("PROJECT", project));
         form.Children.Add(Pair(Ui.Field("INVOICE NUMBER", number), Ui.Field("PO NUMBER", po)));
         form.Children.Add(Ui.Field("DATE RANGE", preset, 8));
-        form.Children.Add(Pair(Ui.Field("FROM", from), Ui.Field("TO", to)));
+        form.Children.Add(Pair(Ui.Field("FROM DATE", from), Ui.Field("TO DATE", to)));
         form.Children.Add(Pair(Ui.Field("GROUP LINES BY", group), Ui.Field("DUE IN (DAYS)", dueDays)));
-        form.Children.Add(Pair(Ui.Field(taxLabelCaption(), taxLabel), Ui.Field("RATE %", taxPct)));
+        form.Children.Add(Pair(Ui.Field("TAX LABEL", taxLabel), Ui.Field("RATE %", taxPct)));
         form.Children.Add(Ui.Field("DISCOUNT %", discount));
         form.Children.Add(Ui.Field("NOTE TO CLIENT", note, 4));
         var left = Ui.Card(form);
@@ -95,7 +95,6 @@ public class InvoicesPage : PageBase
         UpdatePreview();
     }
 
-    static string taxLabelCaption() => "TAX LABEL";
 
     static Grid Pair(FrameworkElement a, FrameworkElement b)
     {
@@ -155,7 +154,7 @@ public class InvoicesPage : PageBase
         var now = DateTime.UtcNow;
         var inv = new Invoice
         {
-            Number = number.Text.Trim(), ProjectId = p.Id, ProjectName = p.Name, ClientName = p.Client, ClientEmail = p.ClientEmail, ClientAddress = p.ClientAddress,
+            Language = Loc.Current, Number = number.Text.Trim(), ProjectId = p.Id, ProjectName = p.Name, ClientName = p.Client, ClientEmail = p.ClientEmail, ClientAddress = p.ClientAddress,
             PoNumber = po.Text.Trim(), IssuedUtc = now, DueUtc = now.AddDays(due), PeriodFrom = f, PeriodTo = t, TimeZoneId = State.Tz.Id, Currency = s.CurrencyCode,
             Lines = lines, DiscountPercent = disc, TaxLabel = string.IsNullOrWhiteSpace(taxLabel.Text) ? "Tax" : taxLabel.Text.Trim(), TaxPercent = tax,
             Note = note.Text.Trim(), PaymentInstructions = b.PaymentInstructions, StudioName = b.Name, StudioEmail = b.Email, StudioAddress = b.Address,
@@ -184,11 +183,11 @@ public class InvoicesPage : PageBase
         var head = new Grid();
         head.ColumnDefinitions.Add(new ColumnDefinition()); head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var hl = new StackPanel();
-        hl.Children.Add(T(string.IsNullOrWhiteSpace(inv.StudioName) ? "Your studio" : inv.StudioName, 16, ink, FontWeights.SemiBold));
+        hl.Children.Add(T(string.IsNullOrWhiteSpace(inv.StudioName) ? Loc.T("Your studio") : inv.StudioName, 16, ink, FontWeights.SemiBold));
         hl.Children.Add(T(inv.StudioEmail, 12, mute));
         head.Children.Add(hl);
         var hr = new StackPanel();
-        hr.Children.Add(T("INVOICE", 22, coral, FontWeights.SemiBold));
+        hr.Children.Add(T(Loc.T("INVOICE"), 22, coral, FontWeights.SemiBold));
         hr.Children.Add(T(inv.Number, 12, ink, FontWeights.SemiBold));
         Grid.SetColumn(hr, 1); head.Children.Add(hr);
         paper.Children.Add(head);
@@ -196,13 +195,13 @@ public class InvoicesPage : PageBase
         var meta = new Grid { Margin = new Thickness(0, 16, 0, 14) };
         meta.ColumnDefinitions.Add(new ColumnDefinition()); meta.ColumnDefinitions.Add(new ColumnDefinition());
         var bt = new StackPanel();
-        bt.Children.Add(T("BILL TO", 10, mute, FontWeights.SemiBold));
+        bt.Children.Add(T(Loc.T("BILL TO"), 10, mute, FontWeights.SemiBold));
         bt.Children.Add(T(inv.ClientName, 13, ink, FontWeights.SemiBold));
         bt.Children.Add(T(inv.ProjectName, 12, mute));
         var dt = new StackPanel();
-        dt.Children.Add(T("PERIOD", 10, mute, FontWeights.SemiBold));
-        dt.Children.Add(T($"{inv.PeriodFrom:MMM d} – {inv.PeriodTo:MMM d, yyyy}", 12.5, ink));
-        dt.Children.Add(T($"Due {Fmt.Date(State.ToLocal(inv.DueUtc))}", 12, mute));
+        dt.Children.Add(T(Loc.T("PERIOD"), 10, mute, FontWeights.SemiBold));
+        dt.Children.Add(T(Fmt.Date(inv.PeriodFrom) + " – " + Fmt.Date(inv.PeriodTo), 12.5, ink));
+        dt.Children.Add(T(Loc.F("Due {0}", Fmt.Date(State.ToLocal(inv.DueUtc))), 12, mute));
         Grid.SetColumn(dt, 1);
         meta.Children.Add(bt); meta.Children.Add(dt);
         paper.Children.Add(meta);
@@ -210,7 +209,7 @@ public class InvoicesPage : PageBase
         paper.Children.Add(new Border { Height = 1, Background = new SolidColorBrush(Color.FromRgb(0xDD, 0xE2, 0xE0)), Margin = new Thickness(0, 0, 0, 8) });
         if (inv.Lines.Count == 0)
         {
-            paper.Children.Add(T("Nothing to invoice for this project and date range.", 13, mute).WithMargin(0, 14, 0, 14));
+            paper.Children.Add(T(Loc.T("Nothing to invoice for this project and date range."), 13, mute).WithMargin(0, 14, 0, 14));
         }
         foreach (var l in inv.Lines.Take(7))
         {
@@ -221,7 +220,7 @@ public class InvoicesPage : PageBase
             var a = T(Fmt.Money(l.Amount), 12.5, ink, FontWeights.SemiBold); a.TextAlignment = TextAlignment.Right; Grid.SetColumn(a, 2); r.Children.Add(a);
             paper.Children.Add(r);
         }
-        if (inv.Lines.Count > 7) paper.Children.Add(T($"+ {inv.Lines.Count - 7} more line{(inv.Lines.Count - 7 == 1 ? "" : "s")} in the PDF", 12, mute).WithMargin(0, 4, 0, 0));
+        if (inv.Lines.Count > 7) paper.Children.Add(T(Loc.N(inv.Lines.Count - 7, "+ {0} more line in the PDF", "+ {0} more lines in the PDF"), 12, mute).WithMargin(0, 4, 0, 0));
 
         if (inv.Lines.Count > 0)
         {
@@ -234,11 +233,11 @@ public class InvoicesPage : PageBase
                 var vv = T(v, big ? 18 : 12.5, big ? coral : ink, FontWeights.SemiBold); Grid.SetColumn(vv, 1); g.Children.Add(vv);
                 paper.Children.Add(g);
             }
-            Tot("Total hours", inv.TotalHours.ToString("0.00"));
-            if (inv.DiscountAmount != 0 || inv.TaxAmount != 0) Tot("Subtotal", Fmt.Money(inv.Subtotal));
-            if (inv.DiscountAmount != 0) Tot($"Discount ({Fmt.Dec(inv.DiscountPercent)}%)", "-" + Fmt.Money(inv.DiscountAmount));
-            if (inv.TaxAmount != 0) Tot($"{inv.TaxLabel} ({Fmt.Dec(inv.TaxPercent)}%)", Fmt.Money(inv.TaxAmount));
-            Tot("TOTAL DUE", Fmt.Money(inv.Total), true);
+            Tot(Loc.T("Total hours"), inv.TotalHours.ToString("0.00"));
+            if (inv.DiscountAmount != 0 || inv.TaxAmount != 0) Tot(Loc.T("Subtotal"), Fmt.Money(inv.Subtotal));
+            if (inv.DiscountAmount != 0) Tot(Loc.F("Discount ({0}%)", Fmt.Dec(inv.DiscountPercent)), "-" + Fmt.Money(inv.DiscountAmount));
+            if (inv.TaxAmount != 0) Tot($"{Loc.T(inv.TaxLabel)} ({Fmt.Dec(inv.TaxPercent)}%)", Fmt.Money(inv.TaxAmount));
+            Tot(Loc.T("TOTAL DUE"), Fmt.Money(inv.Total), true);
         }
 
         previewHost.Children.Add(new Border
@@ -259,7 +258,7 @@ public class InvoicesPage : PageBase
         var inv = draft.Invoice;
         if (string.IsNullOrWhiteSpace(inv.Number)) { Dialogs.SetError(err, "Give the invoice a number."); return; }
         if (State.Data.Invoices.Any(i => i.Number.Equals(inv.Number, StringComparison.OrdinalIgnoreCase) && i.Status != "Void"))
-        { Dialogs.SetError(err, $"Invoice number {inv.Number} is already used."); return; }
+        { Dialogs.SetError(err, Loc.F("Invoice number {0} is already used.", inv.Number)); return; }
 
         var dlg = new SaveFileDialog
         {
@@ -272,7 +271,7 @@ public class InvoicesPage : PageBase
         {
             InvoiceService.WritePdf(inv, dlg.FileName);
         }
-        catch (Exception ex) { State.Toast("The invoice could not be saved: " + ex.Message, true); return; }
+        catch (Exception ex) { State.Toast(Loc.T("The invoice could not be saved: ") + ex.Message, true); return; }
 
         inv.FilePath = dlg.FileName;
         foreach (var s in draft.Sessions) s.InvoiceId = inv.Id;
@@ -281,7 +280,7 @@ public class InvoicesPage : PageBase
         d.InvoiceCounter = Math.Max(d.InvoiceCounter, 1) + 1;
         d.InvoiceNumber = State.NextInvoiceNumber();
         State.Notify();
-        State.Toast($"Invoice {inv.Number} exported · {draft.Sessions.Count} entries marked as billed");
+        State.Toast(Loc.F("Invoice {0} exported · {1} entries marked as billed", inv.Number, draft.Sessions.Count));
         try { Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true }); } catch { }
     }
 
@@ -298,7 +297,7 @@ public class InvoicesPage : PageBase
             return sp;
         }
         var outstanding = all.Where(i => i.Status == "Issued").Sum(i => i.Total);
-        if (outstanding > 0) sp.Children.Add(Ui.Text($"Outstanding: {Fmt.Money(outstanding)}", 13, "WarnBrush", FontWeights.SemiBold).WithMargin(0, 0, 0, 8));
+        if (outstanding > 0) sp.Children.Add(Ui.Text(Loc.F("Outstanding: {0}", Fmt.Money(outstanding)), 13, "WarnBrush", FontWeights.SemiBold).WithMargin(0, 0, 0, 8));
         foreach (var inv in all) sp.Children.Add(HistoryRow(inv));
         return sp;
     }
@@ -309,7 +308,7 @@ public class InvoicesPage : PageBase
         for (int i = 0; i < 4; i++) g.ColumnDefinitions.Add(new ColumnDefinition { Width = i == 0 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
         var l = new StackPanel();
         l.Children.Add(Ui.Text(inv.Number + "  ·  " + inv.ClientName, 14.5, "TextBrush", FontWeights.SemiBold));
-        l.Children.Add(Ui.Text($"{inv.ProjectName}  ·  Issued {Fmt.Date(State.ToLocal(inv.IssuedUtc))}  ·  Due {Fmt.Date(State.ToLocal(inv.DueUtc))}", 12.5, "MutedBrush"));
+        l.Children.Add(Ui.Text(Loc.F("{0}  ·  Issued {1}  ·  Due {2}", inv.ProjectName, Fmt.Date(State.ToLocal(inv.IssuedUtc)), Fmt.Date(State.ToLocal(inv.DueUtc))), 12.5, "MutedBrush"));
         g.Children.Add(l);
 
         var total = Ui.Text(Fmt.Money(inv.Total, inv.Currency), 15, "TextBrush", FontWeights.SemiBold);
@@ -331,29 +330,29 @@ public class InvoicesPage : PageBase
             acts.Children.Add(Ui.IconBtn(Icons.Doc, "Open PDF", () => { try { Process.Start(new ProcessStartInfo(inv.FilePath) { UseShellExecute = true }); } catch (Exception ex) { State.Toast(ex.Message, true); } }));
         acts.Children.Add(Ui.IconBtn(Icons.Download, "Re-export PDF", () => ReExport(inv)));
         if (inv.Status == "Issued")
-            acts.Children.Add(Ui.IconBtn(Icons.Check, "Mark as paid", () => { inv.Status = "Paid"; inv.PaidUtc = DateTime.UtcNow; State.Notify(); State.Toast($"{inv.Number} marked as paid"); }));
+            acts.Children.Add(Ui.IconBtn(Icons.Check, "Mark as paid", () => { inv.Status = "Paid"; inv.PaidUtc = DateTime.UtcNow; State.Notify(); State.Toast(Loc.F("{0} marked as paid", inv.Number)); }));
         else if (inv.Status == "Paid")
             acts.Children.Add(Ui.IconBtn(Icons.Edit, "Mark as unpaid", () => { inv.Status = "Issued"; inv.PaidUtc = null; State.Notify(); }));
         if (inv.Status != "Void")
             acts.Children.Add(Ui.IconBtn(Icons.Ban, "Void invoice and release its entries", () =>
             {
-                if (!Dialogs.Confirm("Void invoice", $"Void {inv.Number}? Its {inv.SessionIds.Count} time entries become unbilled again so you can re-invoice them.", "Void invoice", true)) return;
+                if (!Dialogs.Confirm("Void invoice", Loc.F("Void {0}? Its {1} time entries become unbilled again so you can re-invoice them.", inv.Number, inv.SessionIds.Count), "Void invoice", true)) return;
                 inv.Status = "Void";
                 foreach (var s in State.Data.Sessions.Where(s => s.InvoiceId == inv.Id)) s.InvoiceId = null;
-                State.Notify(); State.Toast($"{inv.Number} voided");
+                State.Notify(); State.Toast(Loc.F("{0} voided", inv.Number));
             }, true));
         acts.Children.Add(Ui.IconBtn(Icons.Trash, "Delete invoice", () =>
         {
             var held = State.Data.Sessions.Count(x => x.InvoiceId == inv.Id);
-            var msg = $"Permanently delete {inv.Number} ({Fmt.Money(inv.Total, inv.Currency)})?";
-            if (inv.Status == "Paid") msg += "\n\nIt is marked as paid; deleting removes it from your records.";
-            if (held > 0) msg += $"\n\nIts {held} time entr{(held == 1 ? "y becomes" : "ies become")} unbilled again.";
-            msg += "\n\nThis can't be undone. The PDF file you exported is not touched.";
+            var msg = Loc.F("Permanently delete {0} ({1})?", inv.Number, Fmt.Money(inv.Total, inv.Currency));
+            if (inv.Status == "Paid") msg += "\n\n" + Loc.T("It is marked as paid; deleting removes it from your records.");
+            if (held > 0) msg += "\n\n" + Loc.N(held, "Its {0} time entry becomes unbilled again.", "Its {0} time entries become unbilled again.");
+            msg += "\n\n" + Loc.T("This can't be undone. The PDF file you exported is not touched.");
             if (!Dialogs.Confirm("Delete invoice", msg, "Delete invoice", true)) return;
             foreach (var x in State.Data.Sessions.Where(x => x.InvoiceId == inv.Id)) x.InvoiceId = null;
             State.Data.Invoices.Remove(inv);
             State.Data.InvoiceNumber = State.NextInvoiceNumber();
-            State.Notify(); State.Toast($"{inv.Number} deleted");
+            State.Notify(); State.Toast(Loc.F("{0} deleted", inv.Number));
         }, true));
         Grid.SetColumn(acts, 3); g.Children.Add(acts);
 
@@ -368,6 +367,6 @@ public class InvoicesPage : PageBase
         var dlg = new SaveFileDialog { Title = "Export invoice PDF", Filter = "PDF invoice (*.pdf)|*.pdf", DefaultExt = "pdf", FileName = InvoiceService.SafeName($"{inv.Number} {inv.ClientName}") + ".pdf" };
         if (dlg.ShowDialog() != true) return;
         try { InvoiceService.WritePdf(inv, dlg.FileName); inv.FilePath = dlg.FileName; State.Notify(); State.Toast("Invoice PDF saved"); }
-        catch (Exception ex) { State.Toast("The invoice could not be saved: " + ex.Message, true); }
+        catch (Exception ex) { State.Toast(Loc.T("The invoice could not be saved: ") + ex.Message, true); }
     }
 }

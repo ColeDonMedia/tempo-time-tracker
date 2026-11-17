@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Windows.Data;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -24,6 +26,9 @@ public static class Icons
     public const string Download = "M12,4 V15 M7,10 L12,15 L17,10 M5,20 H19";
     public const string Check = "M5,12.5 L10,17.5 L19,7";
     public const string Ban = "M3,12 A9,9 0 1 0 21,12 A9,9 0 1 0 3,12 M5.6,5.6 L18.4,18.4";
+    public const string Mini = "M4,5 H20 V19 H4 Z M12,12 H20 V19 H12 Z";
+    public const string Expand = "M4,10 V4 H10 M20,14 V20 H14 M4,4 L11,11 M20,20 L13,13";
+    public const string Pin = "M9,3 H15 L14.5,9 L18,13 H6 L9.5,9 Z M12,13 V21";
     public const string Archive = "M3,5 H21 V9 H3 Z M5,9 V19 H19 V9 M10,13 H14";
 }
 
@@ -34,11 +39,11 @@ public static class Ui
     public static T Dyn<T>(this T e, DependencyProperty p, string key) where T : FrameworkElement
     { e.SetResourceReference(p, key); return e; }
 
-    public static TextBlock Text(string s, double size = 14, string fg = "TextBrush", FontWeight? w = null, bool wrap = false)
+    public static TextBlock Text(string s, double size = 14, string fg = "TextBrush", FontWeight? w = null, bool wrap = false, [CallerArgumentExpression("s")] string? expr = null)
     {
         var t = new TextBlock
         {
-            Text = s, FontSize = size, FontWeight = w ?? FontWeights.Normal,
+            Text = (expr != null && expr.StartsWith("\"")) ? Loc.T(s) : s, FontSize = size, FontWeight = w ?? FontWeights.Normal,
             TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap,
             TextTrimming = wrap ? TextTrimming.None : TextTrimming.CharacterEllipsis
         };
@@ -68,6 +73,7 @@ public static class Ui
     public static Button Btn(string text, Action click, string style = "GlassButton", string? icon = null, string? tip = null)
     {
         var b = new Button { Style = (Style)Application.Current.FindResource(style) };
+        text = Loc.T(text); tip = tip != null ? Loc.T(tip) : null;
         if (icon != null)
         {
             var sp = new StackPanel { Orientation = Orientation.Horizontal };
@@ -94,14 +100,14 @@ public static class Ui
     {
         var b = new Border { CornerRadius = new CornerRadius(20), Padding = new Thickness(10, 3, 10, 4), VerticalAlignment = VerticalAlignment.Center };
         b.SetResourceReference(Border.BackgroundProperty, bgKey);
-        b.Child = Text(text, 12, fgKey, FontWeights.SemiBold);
+        b.Child = Text(Loc.T(text), 12, fgKey, FontWeights.SemiBold);
         return b;
     }
 
     public static StackPanel Field(string label, FrameworkElement ctl, double gap = 14)
     {
         var sp = new StackPanel { Margin = new Thickness(0, 0, 0, gap) };
-        sp.Children.Add(Text(label, 12, "MutedBrush", FontWeights.SemiBold).WithMargin(0, 0, 0, 6));
+        sp.Children.Add(Text(Loc.T(label), 12, "MutedBrush", FontWeights.SemiBold).WithMargin(0, 0, 0, 6));
         sp.Children.Add(ctl);
         return sp;
     }
@@ -113,7 +119,7 @@ public static class Ui
 
     public static TextBox Input(string text = "", string? hint = null)
     {
-        var t = new TextBox { Text = text, Tag = hint ?? "" };
+        var t = new TextBox { Text = text, Tag = Loc.T(hint ?? "") };
         return t;
     }
 
@@ -121,6 +127,14 @@ public static class Ui
     {
         var c = new ComboBox { ItemsSource = items.ToList() };
         
+        if (typeof(T) == typeof(string))
+        {
+            // Stored values stay English; only what the user sees is translated.
+            var f = new FrameworkElementFactory(typeof(TextBlock));
+            f.SetBinding(TextBlock.TextProperty, new Binding { Converter = LocConverter.Instance });
+            f.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+            c.ItemTemplate = new DataTemplate { VisualTree = f };
+        }
         if (selected != null) c.SelectedItem = selected;
         return c;
     }
@@ -131,9 +145,9 @@ public static class Ui
         g.ColumnDefinitions.Add(new ColumnDefinition());
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var left = new StackPanel();
-        var h = Text(title, 30, "TextBrush", FontWeights.SemiBold);
+        var h = Text(Loc.T(title), 30, "TextBrush", FontWeights.SemiBold);
         left.Children.Add(h);
-        left.Children.Add(Text(subtitle, 14, "MutedBrush").WithMargin(0, 4, 0, 0));
+        left.Children.Add(Text(Loc.T(subtitle), 14, "MutedBrush").WithMargin(0, 4, 0, 0));
         g.Children.Add(left);
         var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         foreach (var a in actions) { if (a is FrameworkElement fe) fe.Margin = new Thickness(10, 0, 0, 0); right.Children.Add(a); }
@@ -149,10 +163,10 @@ public static class Ui
         var dot = new Ellipse { Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         dot.SetResourceReference(Shape.FillProperty, accent);
         row.Children.Add(dot);
-        row.Children.Add(Text(label.ToUpperInvariant(), 11, "MutedBrush", FontWeights.SemiBold));
+        row.Children.Add(Text(Loc.T(label).ToUpperInvariant(), 11, "MutedBrush", FontWeights.SemiBold));
         sp.Children.Add(row);
         sp.Children.Add(Text(value, 25, "TextBrush", FontWeights.SemiBold).WithMargin(0, 10, 0, 2));
-        sp.Children.Add(Text(sub, 12.5, "MutedBrush"));
+        sp.Children.Add(Text(Loc.T(sub), 12.5, "MutedBrush"));
         return Card(sp, 20);
     }
 
@@ -162,8 +176,8 @@ public static class Ui
         var ring = new Border { Width = 56, Height = 56, CornerRadius = new CornerRadius(28), HorizontalAlignment = HorizontalAlignment.Center, Child = Icon(icon, 24, "AccentBrush") };
         ring.SetResourceReference(Border.BackgroundProperty, "AccentSoftBrush");
         sp.Children.Add(ring);
-        sp.Children.Add(Text(title, 17, "TextBrush", FontWeights.SemiBold).WithMargin(0, 14, 0, 4).Center());
-        sp.Children.Add(Text(body, 13.5, "MutedBrush", wrap: true).Center().WithMargin(0, 0, 0, action != null ? 16 : 0));
+        sp.Children.Add(Text(Loc.T(title), 17, "TextBrush", FontWeights.SemiBold).WithMargin(0, 14, 0, 4).Center());
+        sp.Children.Add(Text(Loc.T(body), 13.5, "MutedBrush", wrap: true).Center().WithMargin(0, 0, 0, action != null ? 16 : 0));
         if (action != null) { ((FrameworkElement)action).HorizontalAlignment = HorizontalAlignment.Center; sp.Children.Add(action); }
         return sp;
     }
@@ -193,9 +207,11 @@ public static class Ui
         _ => Color.FromRgb(0xFF, 0x77, 0x5E),
     };
 
+    // No thousands separators: "37,50" must read as 37.50 in a comma-decimal language, never 3750.
+    const NumberStyles DecStyles = NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign;
     public static bool TryDec(string s, out decimal v) =>
-        decimal.TryParse(s.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out v) ||
-        decimal.TryParse(s.Trim(), NumberStyles.Number, CultureInfo.CurrentCulture, out v);
+        decimal.TryParse(s.Trim(), DecStyles, CultureInfo.CurrentCulture, out v) ||
+        decimal.TryParse(s.Trim(), DecStyles, CultureInfo.InvariantCulture, out v);
 
     public static bool TryDate(string s, out DateTime d) =>
         DateTime.TryParseExact(s.Trim(), new[] { "yyyy-MM-dd", "yyyy/MM/dd" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out d) ||
@@ -226,6 +242,13 @@ public static class Ui
         rtb.Render(v); rtb.Freeze();
         return rtb;
     }
+}
+
+public sealed class LocConverter : IValueConverter
+{
+    public static readonly LocConverter Instance = new();
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => Loc.T(value?.ToString() ?? "");
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
 public abstract class PageBase : UserControl

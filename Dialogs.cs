@@ -10,16 +10,19 @@ public static class Dialogs
     {
         var w = new Window
         {
-            Title = title, Width = width, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = Application.Current.MainWindow,
+            Title = Loc.T(title), Width = width, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
             ShowInTaskbar = false, FontSize = 14, UseLayoutRounding = true
         };
+        var owner = Application.Current.Windows.OfType<Window>().FirstOrDefault(x => x.IsActive && x.IsVisible)
+                    ?? Application.Current.Windows.OfType<Window>().FirstOrDefault(x => x.IsVisible);
+        if (owner != null) { w.Owner = owner; w.WindowStartupLocation = WindowStartupLocation.CenterOwner; }
         w.SetResourceReference(Control.ForegroundProperty, "TextBrush");
         w.FontFamily = new System.Windows.Media.FontFamily("Segoe UI Variable Text, Segoe UI");
         w.SourceInitialized += (_, _) => Backdrop.Apply(w);
 
         var root = new StackPanel { Margin = new Thickness(26, 22, 26, 22) };
-        root.Children.Add(Ui.Text(title, 20, "TextBrush", FontWeights.SemiBold).WithMargin(0, 0, 0, 16));
+        root.Children.Add(Ui.Text(Loc.T(title), 20, "TextBrush", FontWeights.SemiBold).WithMargin(0, 0, 0, 16));
         root.Children.Add(body);
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
@@ -36,7 +39,7 @@ public static class Dialogs
     }
 
     public static bool Confirm(string title, string message, string okText, bool danger = false) =>
-        Show(title, Ui.Text(message, 14, "MutedBrush", wrap: true).WithMargin(0, 0, 0, 14), okText, null, 440, danger);
+        Show(title, Ui.Text(Loc.T(message), 14, "MutedBrush", wrap: true).WithMargin(0, 0, 0, 14), okText, null, 440, danger);
 
     public static TextBlock ErrorLabel()
     {
@@ -48,6 +51,6 @@ public static class Dialogs
 
     public static void SetError(TextBlock t, string? msg)
     {
-        t.Text = msg ?? ""; t.Visibility = string.IsNullOrEmpty(msg) ? Visibility.Collapsed : Visibility.Visible;
+        t.Text = Loc.T(msg ?? ""); t.Visibility = string.IsNullOrEmpty(msg) ? Visibility.Collapsed : Visibility.Visible;
     }
 }

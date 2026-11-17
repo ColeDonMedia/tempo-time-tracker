@@ -20,6 +20,8 @@ public static class Backdrop
         if (h == IntPtr.Zero) return;
         int dark = App.IsDark ? 1 : 0;
         DwmSetWindowAttribute(h, 20, ref dark, 4);                    // immersive dark title bar
+        int round = 2;                                                // DWMWCP_ROUND: soft corners, also on borderless windows
+        DwmSetWindowAttribute(h, 33, ref round, 4);
 
         var mode = State.Data.Settings.Backdrop;
         var src = HwndSource.FromHwnd(h);

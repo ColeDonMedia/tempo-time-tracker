@@ -28,7 +28,7 @@ public class OverviewPage : PageBase
         var metrics = new UniformGrid { Columns = 4, Margin = new Thickness(0, 0, 0, 18) };
         void Add(Border b, bool last = false) { b.Margin = new Thickness(0, 0, last ? 0 : 14, 0); metrics.Children.Add(b); }
         Add(Ui.Metric("Tracked today", Fmt.Hm(State.DayMs(now)), State.Running ? "timer running now" : "so far today"));
-        Add(Ui.Metric("This week", Fmt.Hm(week), Fmt.Money(State.WeekEarned(now)) + " billable", "GoodBrush"));
+        Add(Ui.Metric("This week", Fmt.Hm(week), Loc.F("{0} billable", Fmt.Money(State.WeekEarned(now))), "GoodBrush"));
         Add(Ui.Metric("Unbilled", Fmt.Money(State.Unbilled), "not yet invoiced", "WarnBrush"));
         Add(Ui.Metric("Active projects", State.ActiveProjects.Count().ToString(), "clients & brands"), true);
         root.Children.Add(metrics);
@@ -128,7 +128,7 @@ public class OverviewPage : PageBase
                 var ms = State.ElapsedMs;
                 var p = State.Proj(d.Timer.ProjectId);
                 var s = State.StopTimer();
-                State.Toast(s != null ? $"Saved {Fmt.Hm(ms)} to {p?.Name}" : "Timer cleared (under 1 second)");
+                State.Toast(s != null ? Loc.F("Saved {0} to {1}", Fmt.Hm(ms), p?.Name) : "Timer cleared (under 1 second)");
             }, "GlassButton", Icons.Stop);
             stop.Padding = new Thickness(16, 12, 16, 12); stop.Margin = new Thickness(8, 0, 0, 0);
             Grid.SetColumn(stop, 1); btns.Children.Add(stop);
@@ -188,7 +188,7 @@ public class OverviewPage : PageBase
         track.Child = goalFill;
         track.SizeChanged += (_, e) => goalFill.Width = Math.Min(1, hrs / goal) * e.NewSize.Width;
         sp.Children.Add(track);
-        goalText = Ui.Text($"{hrs:0.#}h of {goal:0.#}h weekly goal", 12.5, "MutedBrush");
+        goalText = Ui.Text(Loc.F("{0}h of {1}h weekly goal", hrs.ToString("0.#"), goal.ToString("0.#")), 12.5, "MutedBrush");
         sp.Children.Add(goalText);
         return Ui.Card(sp);
     }
@@ -198,7 +198,7 @@ public class OverviewPage : PageBase
         if (clock == null) return;
         var ms = State.ElapsedMs;
         clock.Text = Fmt.Clock(ms);
-        stateLbl.Text = State.Running ? "TIMER RUNNING" : State.HasTimer ? "TIMER PAUSED" : "READY WHEN YOU ARE";
+        stateLbl.Text = Loc.T(State.Running ? "TIMER RUNNING" : State.HasTimer ? "TIMER PAUSED" : "READY WHEN YOU ARE");
         UpdateRing(State.HasTimer ? (ms % 60000) / 60000.0 : 0);
     }
 

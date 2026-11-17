@@ -42,18 +42,18 @@
 
             <!-- Sidebar -->
             <Border Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,0,1,0">
-                <DockPanel Margin="18,22,18,18">
+                <DockPanel x:Name="SidebarDock" Margin="18,22,18,18">
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,0,0,26">
                         <ContentControl x:Name="LogoHost"/>
                         <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                             <TextBlock Text="Tempo" FontSize="20" FontWeight="SemiBold"/>
-                            <TextBlock Text="Studio time tracker" FontSize="11.5" Foreground="{DynamicResource MutedBrush}"/>
+                            <TextBlock x:Name="Tagline" Text="Studio time tracker" FontSize="11.5" Foreground="{DynamicResource MutedBrush}"/>
                         </StackPanel>
                     </StackPanel>
 
                     <!-- Mini timer -->
                     <Border x:Name="MiniTimer" DockPanel.Dock="Bottom" Style="{StaticResource Card}" Padding="14,12"
-                            Visibility="Collapsed" Cursor="Hand" ToolTip="Open timer" MouseLeftButtonUp="MiniTimer_Click">
+                            Visibility="Collapsed" Cursor="Hand" MouseLeftButtonUp="MiniTimer_Click">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
                                 <Ellipse x:Name="MiniDot" Width="8" Height="8" Fill="{DynamicResource AccentBrush}" Margin="0,0,8,0"/>
@@ -65,7 +65,7 @@
                     </Border>
 
                     <StackPanel x:Name="Nav">
-                        <TextBlock Text="WORKSPACE" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource FaintBrush}" Margin="12,0,0,8"/>
+                        <TextBlock x:Name="WorkspaceLabel" Text="WORKSPACE" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource FaintBrush}" Margin="12,0,0,8"/>
                     </StackPanel>
                 </DockPanel>
             </Border>

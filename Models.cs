@@ -64,6 +64,11 @@ public class AppSettings
     public string TaxLabel { get; set; } = "Tax";
     public decimal DefaultTaxPercent { get; set; }
     public string InvoiceGrouping { get; set; } = "Task"; // Task | Day | Entry
+    public string Language { get; set; } = "";            // "" = pick from Windows on first run
+    public double? MiniLeft { get; set; }
+    public double? MiniTop { get; set; }
+    public bool MiniPinned { get; set; } = true;
+    public bool MainPinned { get; set; }
     public int IdleMinutes { get; set; } = 10;            // 0 = off
     public bool CloseToTray { get; set; }
 }
@@ -108,6 +113,7 @@ public class Invoice
     public string StudioAddress { get; set; } = "";
     public string TaxId { get; set; } = "";
     public string LogoPath { get; set; } = "";
+    public string Language { get; set; } = "";            // language the invoice was issued in ("" = English)
     public string Status { get; set; } = "Issued";        // Issued | Paid | Void
     public DateTime? PaidUtc { get; set; }
     public List<string> SessionIds { get; set; } = new();
