@@ -11,7 +11,7 @@ public class Project
     public string ClientEmail { get; set; } = "";
     public string ClientAddress { get; set; } = "";
     public decimal HourlyRate { get; set; }
-    public string Color { get; set; } = "coral";
+    public string Color { get; set; } = "blue";
     public bool Archived { get; set; }
 
     public override string ToString() => Label;

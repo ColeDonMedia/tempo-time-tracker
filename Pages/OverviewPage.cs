@@ -80,7 +80,7 @@ public class OverviewPage : PageBase
 
         // progress ring + clock
         ring = new Path { StrokeThickness = 9, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
-        ring.SetResourceReference(Shape.StrokeProperty, "AccentBrush");
+        ring.Stroke = new LinearGradientBrush(Color.FromRgb(0x00, 0x68, 0xF0), Color.FromRgb(0x00, 0xF1, 0xA0), new Point(20, 150), new Point(150, 20)) { MappingMode = BrushMappingMode.Absolute };
         var track = new Ellipse { Width = 168, Height = 168, StrokeThickness = 9 };
         track.SetResourceReference(Shape.StrokeProperty, "FieldBorderBrush");
         clock = new TextBlock { FontSize = 34, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Text = "00:00:00" };
@@ -160,7 +160,7 @@ public class OverviewPage : PageBase
             var h = Math.Max(vals[i] > 0 ? 6 : 3, vals[i] / max * 130);
             var bar = new Border { Height = h, CornerRadius = new CornerRadius(8), VerticalAlignment = VerticalAlignment.Bottom };
             bool today = days[i] == now.Date;
-            bar.SetResourceReference(Border.BackgroundProperty, today ? "AccentBrush" : vals[i] > 0 ? "FaintBrush" : "FieldBorderBrush");
+            bar.SetResourceReference(Border.BackgroundProperty, today ? "AccentGradientVBrush" : vals[i] > 0 ? "FaintBrush" : "FieldBorderBrush");
             if (!today && vals[i] > 0) bar.Opacity = 0.6;
             var lbl = Ui.Text(vals[i] > 0 ? $"{vals[i]:0.#}h" : "", 11.5, "MutedBrush").Center();
             lbl.VerticalAlignment = VerticalAlignment.Top;
@@ -184,7 +184,7 @@ public class OverviewPage : PageBase
         var track = new Border { Height = 8, CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 18, 0, 6) };
         track.SetResourceReference(Border.BackgroundProperty, "FieldBorderBrush");
         goalFill = new Border { CornerRadius = new CornerRadius(4), HorizontalAlignment = HorizontalAlignment.Left };
-        goalFill.SetResourceReference(Border.BackgroundProperty, "AccentBrush");
+        goalFill.SetResourceReference(Border.BackgroundProperty, "AccentGradientBrush");
         track.Child = goalFill;
         track.SizeChanged += (_, e) => goalFill.Width = Math.Min(1, hrs / goal) * e.NewSize.Width;
         sp.Children.Add(track);

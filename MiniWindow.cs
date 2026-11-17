@@ -9,17 +9,16 @@ using System.Windows.Threading;
 namespace Tempo;
 
 /// <summary>
-/// The compact view: a 300 × 150 borderless glass window with the clock, start/pause/stop, a project picker and the task.
-/// Picking another project saves the running session and starts the new project's timer straight away.
-/// Drag it by any empty part of its surface.
+/// The compact view: a 200 × 100 borderless glass window with the clock, start/pause/stop and a project picker
+/// (plus pin and "full view" buttons). Picking another project saves the running session and starts the new
+/// project's timer straight away. Drag it by any empty part of its surface. The task text is edited in the full view.
 /// </summary>
 public sealed class MiniWindow : Window
 {
-    public const double MiniWidth = 300, MiniHeight = 150;
+    public const double MiniWidth = 200, MiniHeight = 100;
 
     TextBlock clock = null!;
     ComboBox combo = null!;
-    TextBox task = null!;
     Border status = null!;
     TextBlock statusText = null!;
     bool building, allowClose;
@@ -33,7 +32,7 @@ public sealed class MiniWindow : Window
         Height = MiniHeight;
         ResizeMode = ResizeMode.NoResize;
         WindowStyle = WindowStyle.None;
-        FontSize = 13;
+        FontSize = 12;
         UseLayoutRounding = true;
         FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
         this.SetResourceReference(ForegroundProperty, "TextBrush");
@@ -88,21 +87,19 @@ public sealed class MiniWindow : Window
         if (locked != null && !projects.Contains(locked)) projects.Add(locked);
 
         var root = new Grid();
-        root.Children.Add(Glow("Blob1C", "Blob1T", HorizontalAlignment.Left, VerticalAlignment.Top, new Thickness(-120, -140, 0, 0)));
-        root.Children.Add(Glow("Blob2C", "Blob2T", HorizontalAlignment.Right, VerticalAlignment.Bottom, new Thickness(0, 0, -130, -150)));
+        root.Children.Add(Glow("Blob1C", "Blob1T", HorizontalAlignment.Left, VerticalAlignment.Top, new Thickness(-110, -130, 0, 0)));
+        root.Children.Add(Glow("Blob2C", "Blob2T", HorizontalAlignment.Right, VerticalAlignment.Bottom, new Thickness(0, 0, -120, -140)));
 
-        var col = new Grid { Margin = new Thickness(12, 10, 12, 12) };
+        var col = new Grid { Margin = new Thickness(10, 8, 10, 8) };
         col.RowDefinitions.Add(new RowDefinition { Height = new GridLength(40) });
-        col.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
-        col.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
         col.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
         col.RowDefinitions.Add(new RowDefinition { Height = new GridLength(30) });
 
-        // ---- row 1: clock + controls
+        // ---- row 1: clock + start/pause + stop
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition());
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        clock = new TextBlock { FontSize = 28, FontWeight = FontWeights.SemiBold, Text = "00:00:00", VerticalAlignment = VerticalAlignment.Center };
+        clock = new TextBlock { FontSize = 23, FontWeight = FontWeights.SemiBold, Text = "00:00:00", VerticalAlignment = VerticalAlignment.Center };
         System.Windows.Documents.Typography.SetNumeralAlignment(clock, FontNumeralAlignment.Tabular);
         top.Children.Add(clock);
 
@@ -110,43 +107,42 @@ public sealed class MiniWindow : Window
         var main = State.Running
             ? Ui.Btn("", ToggleTimer, "GlassButton", Icons.Pause, "Pause")
             : Ui.Btn("", ToggleTimer, "PrimaryButton", Icons.Play, State.HasTimer ? "Resume" : "Start timer");
-        main.Padding = new Thickness(8); main.IsEnabled = projects.Count > 0;
+        main.Padding = new Thickness(7); main.IsEnabled = projects.Count > 0;
         tools.Children.Add(main);
-        if (State.HasTimer)
-        {
-            var stop = Ui.Btn("", StopAndSave, "GlassButton", Icons.Stop, "Stop & save");
-            stop.Padding = new Thickness(8); stop.Margin = new Thickness(4, 0, 0, 0);
-            tools.Children.Add(stop);
-        }
-        var pin = PinButton(); pin.Margin = new Thickness(6, 0, 0, 0);
-        tools.Children.Add(pin);
-        var expand = Ui.IconBtn(Icons.Expand, "Full view", () => MainWindow.Instance.ShowFull());
-        expand.Padding = new Thickness(6);
-        tools.Children.Add(expand);
+        var stop = Ui.Btn("", StopAndSave, "GlassButton", Icons.Stop, "Stop & save");
+        stop.Padding = new Thickness(7); stop.Margin = new Thickness(4, 0, 0, 0);
+        stop.IsEnabled = State.HasTimer;
+        tools.Children.Add(stop);
         Grid.SetColumn(tools, 1); top.Children.Add(tools);
         col.Children.Add(top);
 
-        // ---- row 3: project picker
+        // ---- row 3: project picker + pin + full view
+        var bottom = new Grid();
+        bottom.ColumnDefinitions.Add(new ColumnDefinition());
+        bottom.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         combo = Ui.Combo(projects, locked ?? projects.FirstOrDefault());
-        combo.Padding = new Thickness(10, 5, 30, 5);
+        combo.FontSize = 12;
+        combo.Padding = new Thickness(8, 0, 22, 0);
+        combo.Height = 30;
+        combo.VerticalContentAlignment = VerticalAlignment.Center;
         combo.IsEnabled = projects.Count > 0;
         combo.ToolTip = Loc.T("Switching projects saves the running session and starts the new one.");
         combo.SelectionChanged += (_, _) => { if (!building && combo.SelectedItem is Project p) Switch(p); };
-        Grid.SetRow(combo, 2); col.Children.Add(combo);
+        bottom.Children.Add(combo);
+        var small = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 0, 0) };
+        small.Children.Add(PinButton());
+        var expand = Ui.IconBtn(Icons.Expand, "Full view", () => MainWindow.Instance.ShowFull());
+        expand.Padding = new Thickness(4);
+        small.Children.Add(expand);
+        Grid.SetColumn(small, 1); bottom.Children.Add(small);
+        Grid.SetRow(bottom, 2); col.Children.Add(bottom);
 
-        // ---- row 5: task
-        task = Ui.Input(d.Timer.Task, projects.Count == 0 ? "Create a project first so Tempo knows which rate to use." : "What are you working on?");
-        task.Padding = new Thickness(10, 4, 10, 4);
-        task.IsEnabled = projects.Count > 0;
-        task.LostFocus += (_, _) => { d.Timer.Task = task.Text.Trim(); State.Save(); };
-        Grid.SetRow(task, 4); col.Children.Add(task);
-
-        // ---- transient message, shown over the task row
-        statusText = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        // ---- transient message, shown over the picker row
+        statusText = new TextBlock { FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         statusText.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
-        status = new Border { CornerRadius = new CornerRadius(12), Padding = new Thickness(10, 0, 10, 0), Visibility = Visibility.Collapsed, Child = statusText };
+        status = new Border { CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 0, 8, 0), Visibility = Visibility.Collapsed, Child = statusText };
         status.SetResourceReference(Border.BackgroundProperty, "PopupBrush");
-        Grid.SetRow(status, 4); col.Children.Add(status);
+        Grid.SetRow(status, 2); col.Children.Add(status);
 
         root.Children.Add(col);
         root.MouseLeftButtonDown += Drag;
@@ -158,7 +154,7 @@ public sealed class MiniWindow : Window
         Tick();
     }
 
-    /// <summary>Drag the window from any empty area (not from buttons, fields or the project list).</summary>
+    /// <summary>Drag the window from any empty area (not from buttons or the project list).</summary>
     void Drag(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
@@ -172,13 +168,13 @@ public sealed class MiniWindow : Window
         var br = new RadialGradientBrush();
         br.GradientStops.Add(new GradientStop((Color)Application.Current.FindResource(c), 0));
         br.GradientStops.Add(new GradientStop((Color)Application.Current.FindResource(t), 1));
-        return new Ellipse { Width = 300, Height = 300, HorizontalAlignment = h, VerticalAlignment = v, Margin = m, Fill = br, IsHitTestVisible = false };
+        return new Ellipse { Width = 260, Height = 260, HorizontalAlignment = h, VerticalAlignment = v, Margin = m, Fill = br, IsHitTestVisible = false };
     }
 
     Button PinButton()
     {
         var b = Ui.Btn("", () => { }, "IconButton", Icons.Pin, "Keep on top");
-        b.Padding = new Thickness(6);
+        b.Padding = new Thickness(4);
         void Paint() => b.Content = Ui.Icon(Icons.Pin, 16, Topmost ? "AccentBrush" : "MutedBrush");
         Paint();
         b.Click += (_, _) =>
@@ -195,15 +191,14 @@ public sealed class MiniWindow : Window
     void ToggleTimer()
     {
         var d = State.Data;
-        if (State.Running) { d.Timer.Task = task.Text.Trim(); State.PauseTimer(); return; }
+        if (State.Running) { State.PauseTimer(); return; }
         if (combo.SelectedItem is not Project p) { State.Toast("Choose a project first", true); return; }
-        State.StartTimer(p.Id, task.Text.Trim());
+        State.StartTimer(p.Id, d.Timer.Task);
     }
 
     void StopAndSave()
     {
         var d = State.Data;
-        d.Timer.Task = task.Text.Trim();
         var ms = State.ElapsedMs;
         var p = State.Proj(d.Timer.ProjectId);
         var s = State.StopTimer();
@@ -215,7 +210,6 @@ public sealed class MiniWindow : Window
     {
         var d = State.Data;
         if (d.Timer.ProjectId == p.Id) return;
-        d.Timer.Task = task.Text.Trim();
         bool wasRunning = State.Running;
         if (State.HasTimer)
         {
@@ -235,7 +229,7 @@ public sealed class MiniWindow : Window
         if (statusText == null) return;
         statusText.Text = msg;
         status.Visibility = Visibility.Visible;
-        statusUntil = DateTime.UtcNow.AddSeconds(3.5);
+        statusUntil = DateTime.UtcNow.AddSeconds(2.5);
     }
 
     void Tick()

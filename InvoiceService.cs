@@ -59,7 +59,7 @@ public static class InvoiceService
     // ---------------- PDF (Tempo's own writer, see Pdf.cs) ----------------
     static Color Hex(string h) => (Color)ColorConverter.ConvertFromString(h);
     static readonly Color Ink = Hex("#1E2B34"), Muted = Hex("#5E6A74"), Faint = Hex("#8A949C"), Rule = Hex("#DDE2E0"),
-                          RowRule = Hex("#E6EAE8"), HeadRule = Hex("#BFC7C4"), Coral = Hex("#E8573C"), Green = Hex("#1B8F69");
+                          RowRule = Hex("#E6EAE8"), HeadRule = Hex("#BFC7C4"), Coral = Hex("#0068F0"), Green = Hex("#008A5A");
 
     public static void WritePdf(Invoice inv, string path)
     {

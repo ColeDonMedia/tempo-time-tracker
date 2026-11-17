@@ -176,7 +176,7 @@ public class InvoicesPage : PageBase
         // "paper" stays light in both themes so what you see matches the PDF
         var ink = new SolidColorBrush(Color.FromRgb(0x1E, 0x2B, 0x34));
         var mute = new SolidColorBrush(Color.FromRgb(0x5E, 0x6A, 0x74));
-        var coral = new SolidColorBrush(Color.FromRgb(0xE8, 0x57, 0x3C));
+        var coral = new SolidColorBrush(Color.FromRgb(0x00, 0x68, 0xF0));
         TextBlock T(string s, double size, Brush fg, FontWeight? w = null) => new() { Text = s, FontSize = size, Foreground = fg, FontWeight = w ?? FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis };
 
         var paper = new StackPanel();

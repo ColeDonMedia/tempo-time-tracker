@@ -11,10 +11,10 @@ public static class DemoData
         d.Billing = new BillingProfile { Name = "Northlight Studio", Email = "hello@northlight.example", Address = "12 Harbour Street\nPortland, OR 97201", PaymentInstructions = "Bank transfer: Northlight Studio · Acct 0000 1234 · Ref: invoice number", Note = "Thank you for your business." };
         d.Projects.AddRange(new[]
         {
-            new Project { Id = "p1", Name = "Brand identity refresh", Client = "Hashmark", HourlyRate = 95, Color = "violet", ClientEmail = "ap@hashmark.example" },
-            new Project { Id = "p2", Name = "Website redesign", Client = "Lohman Scholars", HourlyRate = 82.5m, Color = "coral" },
-            new Project { Id = "p3", Name = "Packaging illustrations", Client = "Fernweh Tea", HourlyRate = 70, Color = "green" },
-            new Project { Id = "p4", Name = "Pitch deck", Client = "Orbit Labs", HourlyRate = 110, Color = "blue" },
+            new Project { Id = "p1", Name = "Brand identity refresh", Client = "Hashmark", HourlyRate = 95, Color = "blue", ClientEmail = "ap@hashmark.example" },
+            new Project { Id = "p2", Name = "Website redesign", Client = "Lohman Scholars", HourlyRate = 82.5m, Color = "mint" },
+            new Project { Id = "p3", Name = "Packaging illustrations", Client = "Fernweh Tea", HourlyRate = 70, Color = "teal" },
+            new Project { Id = "p4", Name = "Pitch deck", Client = "Orbit Labs", HourlyRate = 110, Color = "violet" },
         });
         string[] tasks = { "Concept sketches", "Client call", "Revisions round 2", "Moodboard", "Layout exploration", "Final export", "Typography tests", "Asset cleanup" };
         var today = State.TodayLocal;

@@ -195,16 +195,18 @@ public static class Ui
         return e;
     }
 
-    public static readonly string[] ProjectColors = { "coral", "violet", "blue", "green", "gold", "rose", "teal" };
+    public static readonly string[] ProjectColors = { "blue", "mint", "teal", "violet", "coral", "gold", "rose" };
     public static Color ProjColor(string name) => name.ToLowerInvariant() switch
     {
         "violet" => Color.FromRgb(0x8B, 0x7C, 0xF6),
-        "blue" => Color.FromRgb(0x4C, 0x9A, 0xFF),
+        "blue" => Color.FromRgb(0x00, 0x68, 0xF0),
+        "mint" => Color.FromRgb(0x00, 0xF1, 0xA0),
         "green" => Color.FromRgb(0x3D, 0xBE, 0x8B),
         "gold" => Color.FromRgb(0xF2, 0xB5, 0x44),
         "rose" => Color.FromRgb(0xEC, 0x6A, 0xA7),
         "teal" => Color.FromRgb(0x2B, 0xC4, 0xD0),
-        _ => Color.FromRgb(0xFF, 0x77, 0x5E),
+        "coral" => Color.FromRgb(0xFF, 0x77, 0x5E),
+        _ => Color.FromRgb(0x00, 0x68, 0xF0),
     };
 
     // No thousands separators: "37,50" must read as 37.50 in a comma-decimal language, never 3750.
@@ -217,21 +219,48 @@ public static class Ui
         DateTime.TryParseExact(s.Trim(), new[] { "yyyy-MM-dd", "yyyy/MM/dd" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out d) ||
         DateTime.TryParse(s.Trim(), CultureInfo.CurrentCulture, DateTimeStyles.None, out d);
 
-    // ---- logo (matches TempoLogo.svg) ----
+    // ---- logo: blue-to-mint ring, bold T, four clock ticks (redrawn as vectors from the supplied artwork) ----
+    static Brush Grad(Point a, Point b, params (double At, string Hex)[] stops)
+    {
+        var g = new LinearGradientBrush { MappingMode = BrushMappingMode.Absolute, StartPoint = a, EndPoint = b };
+        foreach (var (at, hex) in stops) g.GradientStops.Add(new GradientStop((Color)ColorConverter.ConvertFromString(hex), at));
+        return g;
+    }
+
     public static FrameworkElement Logo(double size)
     {
-        var coral = new SolidColorBrush(Color.FromRgb(0xFF, 0x77, 0x5E));
-        var ink = new SolidColorBrush(Color.FromRgb(0x1E, 0x2B, 0x34));
-        var c = new Canvas { Width = 128, Height = 128 };
-        var tile = new Rectangle { Width = 120, Height = 120, RadiusX = 28, RadiusY = 28, Fill = new SolidColorBrush(Color.FromRgb(0xFA, 0xF7, 0xF2)) };
-        Canvas.SetLeft(tile, 4); Canvas.SetTop(tile, 4);
-        c.Children.Add(tile);
-        c.Children.Add(new Path { Data = Geometry.Parse("M91,37 A43,43 0 1 0 92,93"), Stroke = coral, StrokeThickness = 11, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round });
-        c.Children.Add(new Path { Data = Geometry.Parse("M53,74 L83,47"), Stroke = ink, StrokeThickness = 11, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round });
-        var dot = new Ellipse { Width = 14, Height = 14, Fill = coral };
-        Canvas.SetLeft(dot, 81); Canvas.SetTop(dot, 36);
-        c.Children.Add(dot);
-        return new Viewbox { Width = size, Height = size, Child = c };
+        // Artwork lives in the original 1240-unit space; the outer canvas crops to a rounded white tile around it.
+        var art = new Canvas { Width = 1240, Height = 1240, RenderTransform = new TranslateTransform(-19, -63) };
+        void Add(UIElement e) => art.Children.Add(e);
+        Path Stroke(string d, Brush brush, double w, PenLineCap cap = PenLineCap.Flat) =>
+            new() { Data = Geometry.Parse(d), Stroke = brush, StrokeThickness = w, StrokeStartLineCap = cap, StrokeEndLineCap = cap };
+
+        var tile = new Rectangle
+        {
+            Width = 1180, Height = 1180, RadiusX = 270, RadiusY = 270,
+            Fill = new LinearGradientBrush(Color.FromRgb(0xFF, 0xFF, 0xFF), Color.FromRgb(0xE4, 0xEF, 0xFA), 90)
+        };
+        Canvas.SetLeft(tile, 19); Canvas.SetTop(tile, 63);
+        Add(tile);
+
+        var ring = Grad(new Point(115, 1155), new Point(1105, 152), (0, "#0030D8"), (0.35, "#0068F0"), (0.6, "#00A8E0"), (0.8, "#00D8B8"), (1, "#00F1A0"));
+        Add(Stroke("M1030.7,506.8 A446,446 0 1 1 746.8,227.8", ring, 97));
+
+        var mint = new SolidColorBrush(Color.FromRgb(0x05, 0xEE, 0x8E));
+        Add(Stroke("M790.4,244.6 A446,446 0 0 1 877.4,295.8", mint, 90));
+        Add(Stroke("M913.2,325.8 A446,446 0 0 1 978.8,402.6", mint, 90));
+
+        var tBrush = Grad(new Point(440, 950), new Point(1035, 457), (0, "#0060F8"), (0.5, "#00A0E8"), (1, "#00F1A0"));
+        Add(new Path { Data = Geometry.Parse("M268,587 L298,520 Q320,457 395,457 L1035,457 L985,540 Q960,587 915,587 L745,587 Q712,590 705,620 L628,895 Q612,950 555,950 L440,950 L545,587 Z"), Fill = tBrush });
+        Add(new Path { Data = Geometry.Parse("M545,587 L503,738 Q620,640 705,618 Q760,520 940,462 Q700,490 545,587 Z"), Fill = new SolidColorBrush(Color.FromArgb(70, 0x00, 0x30, 0xB0)) });
+
+        var tick = new SolidColorBrush(Color.FromRgb(0x0B, 0x4C, 0x8C));
+        foreach (var d in new[] { "M623,308 L623,355", "M263,680 L310,680", "M900,680 L948,680", "M623,968 L623,1013" })
+            Add(Stroke(d, tick, 38, PenLineCap.Round));
+
+        var crop = new Canvas { Width = 1180, Height = 1180, ClipToBounds = true };
+        crop.Children.Add(art);
+        return new Viewbox { Width = size, Height = size, Child = crop };
     }
 
     public static BitmapSource LogoBitmap(int px)

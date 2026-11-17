@@ -11,9 +11,9 @@ A free, open-source **studio time tracker for Windows 11**. Track hours per clie
 
 ### Mini timer
 
-Press **Ctrl+M** (or the *Mini timer* button) to shrink Tempo to a small 300 × 150 always-on-top timer: clock, start/pause/stop, project picker and task. Picking another project saves the running session and starts the new one straight away, so switching is one click. The pin button keeps either window above everything else.
+Press **Ctrl+M** (or the *Mini timer* button) to shrink Tempo to a tiny 200 × 100 always-on-top timer: clock, start/pause/stop and a project picker. Picking another project saves the running session and starts the new one straight away, so switching is one click. The pin button keeps either window above everything else.
 
-<p align="center"><img src="docs/screenshots/dark-mini.png" alt="Mini timer" width="300">&nbsp;&nbsp;<img src="docs/screenshots/light-mini.png" alt="Mini timer (light)" width="300"></p>
+<p align="center"><img src="docs/screenshots/dark-mini.png" alt="Mini timer" width="200">&nbsp;&nbsp;<img src="docs/screenshots/light-mini.png" alt="Mini timer (light)" width="200"></p>
 
 ### Your language
 
@@ -57,7 +57,7 @@ Single-file release build:
 dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
 ```
 
-Pushing a tag such as `v2.3.0` makes GitHub Actions build the exe and attach it to a release (see `.github/workflows/build.yml`).
+Pushing a tag such as `v2.4.0` makes GitHub Actions build the exe and attach it to a release (see `.github/workflows/build.yml`).
 
 ## Your data
 
