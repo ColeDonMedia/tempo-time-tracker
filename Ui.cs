@@ -229,19 +229,11 @@ public static class Ui
 
     public static FrameworkElement Logo(double size)
     {
-        // Artwork lives in the original 1240-unit space; the outer canvas crops to a rounded white tile around it.
-        var art = new Canvas { Width = 1240, Height = 1240, RenderTransform = new TranslateTransform(-19, -63) };
+        // Artwork lives in the original 1240-unit space; the outer canvas crops tightly around it (transparent background).
+        var art = new Canvas { Width = 1240, Height = 1240, RenderTransform = new TranslateTransform(-94, -137) };
         void Add(UIElement e) => art.Children.Add(e);
         Path Stroke(string d, Brush brush, double w, PenLineCap cap = PenLineCap.Flat) =>
             new() { Data = Geometry.Parse(d), Stroke = brush, StrokeThickness = w, StrokeStartLineCap = cap, StrokeEndLineCap = cap };
-
-        var tile = new Rectangle
-        {
-            Width = 1180, Height = 1180, RadiusX = 270, RadiusY = 270,
-            Fill = new LinearGradientBrush(Color.FromRgb(0xFF, 0xFF, 0xFF), Color.FromRgb(0xE4, 0xEF, 0xFA), 90)
-        };
-        Canvas.SetLeft(tile, 19); Canvas.SetTop(tile, 63);
-        Add(tile);
 
         var ring = Grad(new Point(115, 1155), new Point(1105, 152), (0, "#0030D8"), (0.35, "#0068F0"), (0.6, "#00A8E0"), (0.8, "#00D8B8"), (1, "#00F1A0"));
         Add(Stroke("M1030.7,506.8 A446,446 0 1 1 746.8,227.8", ring, 97));
@@ -254,11 +246,11 @@ public static class Ui
         Add(new Path { Data = Geometry.Parse("M268,587 L298,520 Q320,457 395,457 L1035,457 L985,540 Q960,587 915,587 L745,587 Q712,590 705,620 L628,895 Q612,950 555,950 L440,950 L545,587 Z"), Fill = tBrush });
         Add(new Path { Data = Geometry.Parse("M545,587 L503,738 Q620,640 705,618 Q760,520 940,462 Q700,490 545,587 Z"), Fill = new SolidColorBrush(Color.FromArgb(70, 0x00, 0x30, 0xB0)) });
 
-        var tick = new SolidColorBrush(Color.FromRgb(0x0B, 0x4C, 0x8C));
+        var tick = new SolidColorBrush(Color.FromRgb(0x1F, 0x72, 0xC8));   // lighter than the original navy so it reads on dark and light
         foreach (var d in new[] { "M623,308 L623,355", "M263,680 L310,680", "M900,680 L948,680", "M623,968 L623,1013" })
             Add(Stroke(d, tick, 38, PenLineCap.Round));
 
-        var crop = new Canvas { Width = 1180, Height = 1180, ClipToBounds = true };
+        var crop = new Canvas { Width = 1030, Height = 1030, ClipToBounds = true };
         crop.Children.Add(art);
         return new Viewbox { Width = size, Height = size, Child = crop };
     }
