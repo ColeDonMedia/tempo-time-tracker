@@ -255,6 +255,28 @@ public class SettingsPage : PageBase
         sy.Children.Add(Ui.Text("Each PC writes its own file into the folder and reads the others, every 2 minutes. If the same entry is changed in two places, the newest change wins. Settings, your billing profile and a running timer stay on each PC.", 12, "FaintBrush", wrap: true).WithMargin(0, 6, 0, 0));
         root.Children.Add(Block(sy));
 
+        // ---------- Calendar subscriptions ----------
+        var cs = new StackPanel();
+        cs.Children.Add(Section("Calendar subscriptions", "Show your meetings on the Day tab so you can turn them into entries. Tempo only reads the calendar, every 30 minutes."));
+        foreach (var feed in s.CalendarFeeds.ToList())
+        {
+            var g = new DockPanel { Margin = new Thickness(0, 3, 0, 3) };
+            var fd = feed;
+            var del = Ui.IconBtn(Icons.Trash, "Remove calendar", () =>
+            {
+                s.CalendarFeeds.Remove(fd); State.Save();
+                try { System.IO.File.Delete(CalendarFeeds.CacheFile(State.Dir, fd)); } catch { }
+                Build();
+            }, true);
+            DockPanel.SetDock(del, Dock.Right); g.Children.Add(del);
+            var nm = Ui.Text(fd.Name, 13.5, "TextBrush", FontWeights.SemiBold); nm.VerticalAlignment = VerticalAlignment.Center;
+            g.Children.Add(nm);
+            cs.Children.Add(g);
+        }
+        if (s.CalendarFeeds.Count == 0) cs.Children.Add(Ui.Text("No calendars yet.", 13, "FaintBrush").WithMargin(0, 0, 0, 8));
+        cs.Children.Add(Ui.Btn("Add calendar…", AddCalendar, "GlassButton", Icons.Calendar).HorizontalLeft().WithMargin(0, 8, 0, 0));
+        root.Children.Add(Block(cs));
+
         // ---------- Automatic backups ----------
         var bk = new StackPanel();
         bk.Children.Add(Section("Automatic backups", "Once a day, Tempo copies your data into a folder you choose, such as a OneDrive or Dropbox folder."));
@@ -316,7 +338,8 @@ public class SettingsPage : PageBase
         var upd = Ui.Check("Check GitHub for new versions once a day", s.CheckUpdates);
         upd.Click += (_, _) => { s.CheckUpdates = upd.IsChecked == true; State.Save(); if (s.CheckUpdates) MainWindow.Instance.CheckForUpdate(); };
         ab.Children.Add(upd);
-        ab.Children.Add(Ui.Text("Only the version number is fetched. Tempo never downloads or installs anything by itself.", 12, "FaintBrush", wrap: true).WithMargin(26, 2, 0, 0));
+        ab.Children.Add(Ui.Text("Only the version number is fetched. Updates are downloaded only when you click Install, and are checked against the release's checksum first.", 12, "FaintBrush", wrap: true).WithMargin(26, 2, 0, 12));
+        ab.Children.Add(Ui.Btn("Report a problem…", App.ReportProblem, "GlassButton", Icons.Bell).HorizontalLeft());
         root.Children.Add(Block(ab));
 
         // ---------- Shortcuts ----------
@@ -345,6 +368,27 @@ public class SettingsPage : PageBase
     /// <summary>Backups prune tempo-backup-*.json and sync writes tempo-sync-*.json; sharing a folder is harmless but confusing, so keep them apart.</summary>
     static bool BackupFolderClash(string folder) =>
         !string.IsNullOrEmpty(State.Data.Settings.BackupFolder) && System.IO.Path.GetFullPath(folder).TrimEnd('\\').Equals(System.IO.Path.GetFullPath(State.Data.Settings.BackupFolder).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+
+    void AddCalendar()
+    {
+        var name = Ui.Input("", "e.g. Work calendar");
+        var url = Ui.Input("", "https://… or webcal://…");
+        var body = new StackPanel();
+        body.Children.Add(Ui.Text("In Google Calendar: Settings → your calendar → Secret address in iCal format. In Outlook: Settings → Calendar → Shared calendars → Publish, then copy the ICS link. In iCloud: share the calendar as a public link.", 13, "MutedBrush", wrap: true).WithMargin(0, 0, 0, 12));
+        body.Children.Add(Ui.Field("NAME", name));
+        body.Children.Add(Ui.Field("CALENDAR ADDRESS", url, 6));
+        body.Children.Add(Ui.Text("Treat this address like a password: anyone who has it can see your calendar. Tempo keeps it on this PC only.", 12, "FaintBrush", wrap: true).WithMargin(0, 0, 0, 8));
+        var err = Dialogs.ErrorLabel(); body.Children.Add(err);
+        Dialogs.Show("Add calendar", body, "Add calendar", () =>
+        {
+            if (CalendarFeeds.Normalize(url.Text) is not string u) { Dialogs.SetError(err, "Paste an address that starts with https:// or webcal://."); return false; }
+            State.Data.Settings.CalendarFeeds.Add(new CalendarFeed { Name = string.IsNullOrWhiteSpace(name.Text) ? Loc.T("Calendar") : name.Text.Trim(), Url = u });
+            State.Save();
+            MainWindow.Instance.RefreshCalendars(true);
+            Build();
+            return true;
+        }, 520);
+    }
 
     static Border Block(UIElement c) { var b = Ui.Card(c); b.Margin = new Thickness(0, 0, 0, 18); return b; }
 

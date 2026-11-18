@@ -27,8 +27,10 @@ public partial class App : Application
         {
             State.Save();
             try { System.IO.File.AppendAllText(System.IO.Path.Combine(State.Dir, "tempo-error.log"), DateTime.Now + Environment.NewLine + ex.Exception + Environment.NewLine + Environment.NewLine); } catch { }
-            MessageBox.Show("Something went wrong, but your data is saved.\n\n" + ex.Exception.Message, "Tempo", MessageBoxButton.OK, MessageBoxImage.Warning);
             ex.Handled = true;
+            if (MessageBox.Show(Loc.T("Something went wrong, but your data is saved.") + "\n\n" + ex.Exception.Message + "\n\n" + Loc.T("Report this problem on GitHub? You'll see exactly what is sent before anything is posted."),
+                    "Tempo", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
+                ReportProblem();
         };
 
         State.Load();
@@ -86,7 +88,7 @@ public partial class App : Application
             InvoiceService.WritePdf(inv, Args[Array.IndexOf(Args, "--selftest-pdf") + 1]);
             Shutdown(); return;
         }
-        var shot = Args.Contains("--shot") && Environment.GetEnvironmentVariable("TEMPO_DATA_DIR") != null;
+        var shot = (Args.Contains("--shot") || Args.Contains("--uitest")) && Environment.GetEnvironmentVariable("TEMPO_DATA_DIR") != null;
         if (shot)
         {
             State.Data.Settings.Backdrop = "Solid";
@@ -105,7 +107,8 @@ public partial class App : Application
         {
             win.Width = 1360; win.Height = 880; win.WindowStartupLocation = WindowStartupLocation.Manual; win.Left = -6000; win.Top = 0;
             win.Show();
-            RunShots(win, Args[Array.IndexOf(Args, "--shot") + 1]);
+            if (Args.Contains("--uitest")) UiTest.Run(win, Args[Array.IndexOf(Args, "--uitest") + 1]);
+            else RunShots(win, Args[Array.IndexOf(Args, "--shot") + 1]);
             return;
         }
         // Started by Windows at sign-in ("Start with Windows"): stay in the tray until clicked.
@@ -217,6 +220,20 @@ public partial class App : Application
         using (var mfs = System.IO.File.Create(System.IO.Path.Combine(dir, $"{prefix}-mini.png"))) menc.Save(mfs);
         miniWin.Shutdown();
         Current.Shutdown();
+    }
+
+    /// <summary>Opens a pre-filled GitHub issue in the browser. Nothing is sent until the user reviews it and presses Submit there.</summary>
+    public static void ReportProblem()
+    {
+        string log = "";
+        try
+        {
+            var path = System.IO.Path.Combine(State.Dir, "tempo-error.log");
+            if (System.IO.File.Exists(path)) log = System.IO.File.ReadAllText(path);
+        }
+        catch { }
+        var url = Problem.IssueUrl(UpdateService.CurrentVersion, $"{Environment.OSVersion.VersionString}", log, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
     }
 
     /// <summary>Developer tool: builds a multi-size .ico (PNG-compressed) from the Tempo logo.</summary>

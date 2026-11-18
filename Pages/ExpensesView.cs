@@ -25,6 +25,7 @@ public static class ExpensesView
         var pc = Ui.Combo(projects, projects.FirstOrDefault(p => p.Id == projectFilter), "Name"); pc.MinWidth = 220;
         pc.SelectionChanged += (_, _) => { projectFilter = (pc.SelectedItem as Project)?.Id ?? ""; rebuild(); };
         var sc = Ui.Combo(new[] { "All", "Unbilled", "Invoiced" }, status); sc.MinWidth = 140;
+        System.Windows.Automation.AutomationProperties.SetName(pc, Loc.T("Project")); System.Windows.Automation.AutomationProperties.SetName(sc, Loc.T("Status"));
         sc.SelectionChanged += (_, _) => { status = (string)sc.SelectedItem; rebuild(); };
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 16) };
         pc.Margin = new Thickness(0, 0, 10, 0);

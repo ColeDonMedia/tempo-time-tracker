@@ -79,6 +79,32 @@ public static class DayView
         }
         root.Children.Add(Ui.Card(gp).WithMargin(0, 0, 0, 18));
 
+        // ---- live calendars ----
+        var feeds = d.Settings.CalendarFeeds;
+        if (feeds.Count > 0)
+        {
+            var cal = new StackPanel();
+            cal.Children.Add(Ui.Text("From your calendar", 16, "TextBrush", FontWeights.SemiBold));
+            cal.Children.Add(Ui.Text("Meetings on this day that aren't tracked yet.", 13, "MutedBrush", wrap: true).WithMargin(0, 2, 0, 10));
+            var tracked = d.Sessions.Select(s => (s.StartedAtUtc, s.EndedAtUtc)).ToHashSet();
+            var evs = CalendarFeeds.Events(State.Dir, feeds, fromUtc, toUtc).Where(x => !tracked.Contains((x.Event.StartUtc, x.Event.EndUtc))).OrderBy(x => x.Event.StartUtc).ToList();
+            if (evs.Count == 0) cal.Children.Add(Ui.Text("Nothing to add for this day.", 13, "FaintBrush"));
+            foreach (var (feed, ev) in evs.Take(30))
+            {
+                var row = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
+                var e = ev;
+                var add = Ui.Btn("Add entry…", () => FillDialog(new Gap(e.StartUtc, e.EndUtc), e.Summary), "GlassButton", Icons.Plus);
+                DockPanel.SetDock(add, Dock.Right); row.Children.Add(add);
+                var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                var lt = Ui.Text(ev.Summary, 14, "TextBrush", FontWeights.SemiBold); lt.TextTrimming = TextTrimming.CharacterEllipsis;
+                info.Children.Add(lt);
+                info.Children.Add(Ui.Text($"{Fmt.Time(State.ToLocal(ev.StartUtc))} – {Fmt.Time(State.ToLocal(ev.EndUtc))}  ·  {feed.Name}", 12.5, "MutedBrush"));
+                row.Children.Add(info);
+                cal.Children.Add(row);
+            }
+            root.Children.Add(Ui.Card(cal).WithMargin(0, 0, 0, 18));
+        }
+
         // ---- activity suggestions ----
         var ac = new StackPanel();
         ac.Children.Add(Ui.Text("Suggested from your activity", 16, "TextBrush", FontWeights.SemiBold));

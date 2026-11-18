@@ -49,6 +49,7 @@ public class EntriesPage : PageBase
         pc.MinWidth = 220;
         var sc = Ui.Combo(new[] { "All", "Unbilled", "Invoiced" }, status); sc.MinWidth = 140;
         var bc = Ui.Combo(new[] { "All", "Billable", "Non-billable" }, billableFilter); bc.MinWidth = 150;
+        System.Windows.Automation.AutomationProperties.SetName(pc, Loc.T("Project")); System.Windows.Automation.AutomationProperties.SetName(sc, Loc.T("Status")); System.Windows.Automation.AutomationProperties.SetName(bc, Loc.T("Billable"));
         var tb = Ui.Input(search, "Search descriptions…"); tb.MinWidth = 240;
         var list = new StackPanel();
         void Refill() { FillList(list); }

@@ -108,15 +108,46 @@ public partial class MainWindow : Window
         if (!State.Data.Settings.CheckUpdates || (DateTime.UtcNow - lastUpdateCheck).TotalHours < 24) return;
         lastUpdateCheck = DateTime.UtcNow;
         if (await UpdateService.CheckAsync() is not { } rel) return;
-        ShowToastAction(Loc.F("Tempo {0} is available.", rel.Tag.TrimStart('v')), Loc.T("View release"), () =>
+        if (UpdateService.IsInstalled && rel.Assets.InstallerUrl != null)
+            ShowToastAction(Loc.F("Tempo {0} is available.", rel.Tag.TrimStart('v')), Loc.T("Install update"), () => InstallUpdate(rel.Assets, rel.Url));
+        else
+            ShowToastAction(Loc.F("Tempo {0} is available.", rel.Tag.TrimStart('v')), Loc.T("View release"), () => OpenRelease(rel.Url));
+    }
+
+    static void OpenRelease(string url)
+    {
+        if (UpdateService.IsTrustedUrl(url))
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+    }
+
+    /// <summary>Only on the user's click: download, verify the checksum, then run the installer (which closes and updates Tempo).</summary>
+    async void InstallUpdate(ReleaseAssets assets, string releaseUrl)
+    {
+        ShowToast("Downloading the update…");
+        var file = await UpdateService.DownloadInstallerAsync(assets);
+        if (file == null) { ShowToast("The update couldn't be downloaded or didn't pass its checksum. Opening the release page instead.", true); OpenRelease(releaseUrl); return; }
+        State.Save();
+        BackupService.RunNow();
+        SyncService.Run();
+        try
         {
-            if (UpdateService.IsTrustedUrl(rel.Url))
-                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(rel.Url) { UseShellExecute = true }); } catch { }
-        });
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(file) { UseShellExecute = true, Arguments = "/SILENT /CLOSEAPPLICATIONS" });
+            tray!.Quit();
+        }
+        catch { ShowToast("The installer didn't start. Opening the release page instead.", true); OpenRelease(releaseUrl); }
     }
 
     HotkeyService? hotkey;
     DateTime lastSync = DateTime.MinValue;   // first tick syncs straight away
+    DateTime lastCalendar = DateTime.MinValue;
+
+    /// <summary>Downloads subscribed calendars in the background, then refreshes the Day view if it's open.</summary>
+    public async void RefreshCalendars(bool force = false)
+    {
+        var feeds = State.Data.Settings.CalendarFeeds.ToList();
+        await CalendarFeeds.RefreshAsync(State.Dir, feeds, force);
+        if (currentKey == "Entries") current?.Build();
+    }
     Button? searchBtn;
     DateTime lastBackupCheck = DateTime.UtcNow;
     DateTime? notTrackingSince, lastReminder, lastEndOfDayWarned;
@@ -296,6 +327,7 @@ public partial class MainWindow : Window
         if (DateTime.UtcNow.Second % 15 == 0) CheckReminders();
         if (FocusMode.Tick() is string focusMsg) Notify(focusMsg);
         if (!string.IsNullOrEmpty(State.Data.Settings.SyncFolder) && (DateTime.UtcNow - lastSync).TotalMinutes >= 2) { lastSync = DateTime.UtcNow; SyncService.Run(); }
+        if (State.Data.Settings.CalendarFeeds.Count > 0 && (DateTime.UtcNow - lastCalendar).TotalMinutes >= 30) { lastCalendar = DateTime.UtcNow; RefreshCalendars(); }
         ActivityRecorder.Tick();
         if (State.Running && State.ElapsedMs > 8 * 3600_000L && !longWarned)
         {

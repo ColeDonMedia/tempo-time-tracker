@@ -61,6 +61,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\Tempo.exe"; Description: "{cm:LaunchProgram,Tempo}"; Flags: nowait postinstall skipifsilent; Check: HasDesktopRuntime
+; an in-app update runs the installer with /SILENT: start Tempo again afterwards
+Filename: "{app}\Tempo.exe"; Flags: nowait; Check: WizardSilent and HasDesktopRuntime
 
 [Code]
 // Tempo.exe is framework-dependent: it needs the .NET 8 Desktop Runtime (x64).

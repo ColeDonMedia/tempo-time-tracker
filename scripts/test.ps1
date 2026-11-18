@@ -48,6 +48,24 @@ Remove-Item $data -Recurse -Force -ErrorAction SilentlyContinue
 if ($failed) { Write-Host "RED: $($failed.Count) failed, $passed passed"; exit 1 }
 Write-Host "GREEN: $passed self-test checks passed"
 
+# UI test: drives every page, tab and main dialog in all languages (skipped by the edit hook to keep it fast)
+if (-not $Hook) {
+    $ui = Join-Path ([IO.Path]::GetTempPath()) ("tempo-uitest-" + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory $ui | Out-Null
+    $env:TEMPO_DATA_DIR = $ui
+    $uiResult = Join-Path $ui 'uitest.txt'
+    Start-Process $exe -ArgumentList '--demo', '--uitest', "`"$uiResult`"" -Wait | Out-Null
+    Remove-Item Env:TEMPO_DATA_DIR
+    if (-not (Test-Path $uiResult)) { Write-Host 'RED: UI test produced no result file'; exit 1 }
+    $uiLines = Get-Content $uiResult
+    $uiFailed = $uiLines | Where-Object { $_ -like 'FAIL*' }
+    $uiPassed = ($uiLines | Where-Object { $_ -like 'PASS*' }).Count
+    $uiFailed | Select-Object -First 25 | ForEach-Object { Write-Host $_ }
+    Remove-Item $ui -Recurse -Force -ErrorAction SilentlyContinue
+    if ($uiFailed) { Write-Host "RED: UI test $($uiFailed.Count) failed, $uiPassed passed"; exit 1 }
+    Write-Host "GREEN: $uiPassed UI checks passed"
+}
+
 if ($Full) {
     Step 'build (Release, warnings as errors)' { dotnet build Tempo.csproj -c Release -nologo -v q -warnaserror } | Out-Null
     Step 'publish single-file exe' { dotnet publish Tempo.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish -nologo -v q } | Out-Null

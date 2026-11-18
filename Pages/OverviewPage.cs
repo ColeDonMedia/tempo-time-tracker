@@ -95,6 +95,7 @@ public class OverviewPage : PageBase
         sp.Children.Add(dial);
 
         var combo = Ui.Combo(projects, locked ?? projects.FirstOrDefault(), "Label");
+        System.Windows.Automation.AutomationProperties.SetName(combo, Loc.T("Project"));
         combo.IsEnabled = !State.HasTimer;
         if (projects.Count == 0) combo.IsEnabled = false;
         var task = Ui.Input(d.Timer.Task, "What are you working on?");

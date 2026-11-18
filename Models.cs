@@ -106,6 +106,7 @@ public class AppSettings
     public string SyncFolder { get; set; } = "";             // "" = sync off
     public string DeviceId { get; set; } = "";
     public string MemberName { get; set; } = "";             // your name on shared entries
+    public List<CalendarFeed> CalendarFeeds { get; set; } = new();
 }
 
 public class TaxLine

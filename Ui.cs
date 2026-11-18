@@ -102,6 +102,7 @@ public static class Ui
         }
         else b.Content = text;
         if (tip != null) { b.ToolTip = tip; System.Windows.Automation.AutomationProperties.SetName(b, tip); }
+        else if (text.Length > 0) System.Windows.Automation.AutomationProperties.SetName(b, text);   // icon + text buttons: screen readers can't see into the StackPanel
         b.Click += (_, _) => click();
         return b;
     }
@@ -173,6 +174,7 @@ public static class Ui
     public static TextBox Input(string text = "", string? hint = null)
     {
         var t = new TextBox { Text = text, Tag = Loc.T(hint ?? "") };
+        if (!string.IsNullOrEmpty(hint)) System.Windows.Automation.AutomationProperties.SetName(t, Loc.T(hint));   // Ui.Field replaces this with the real label
         return t;
     }
 

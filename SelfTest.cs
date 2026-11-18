@@ -207,6 +207,39 @@ public static class SelfTest
         TrackingTests();
         MoneyTests();
         SyncTests();
+        PolishTests();
+    }
+
+    // ---------- phase 10: live calendar, one-click update, problem reports ----------
+    static void PolishTests()
+    {
+        Check("calendar url: https and webcal are accepted, webcal becomes https",
+            CalendarFeeds.Normalize("https://calendar.google.com/calendar/ical/x/private-abc/basic.ics") == "https://calendar.google.com/calendar/ical/x/private-abc/basic.ics"
+            && CalendarFeeds.Normalize(" webcal://p01-caldav.icloud.com/published/2/abc ") == "https://p01-caldav.icloud.com/published/2/abc");
+        Check("calendar url: anything else is refused",
+            CalendarFeeds.Normalize("http://example.com/cal.ics") == null && CalendarFeeds.Normalize("file:///C:/x.ics") == null && CalendarFeeds.Normalize("not a url") == null && CalendarFeeds.Normalize("https://localhost/cal.ics") == null);
+        var f1 = new CalendarFeed { Id = "abc123", Url = "https://a.example/x.ics" };
+        Check("calendar cache: one file per feed, inside the data folder", CalendarFeeds.CacheFile(@"C:\data", f1) == @"C:\data\calendars\abc123.ics");
+
+        var rel = "{\"tag_name\":\"v2.7.0\",\"assets\":[" +
+                  "{\"name\":\"Tempo.exe\",\"browser_download_url\":\"https://github.com/ColeDonMedia/tempo-time-tracker/releases/download/v2.7.0/Tempo.exe\"}," +
+                  "{\"name\":\"Tempo-Setup-2.7.0.exe\",\"browser_download_url\":\"https://github.com/ColeDonMedia/tempo-time-tracker/releases/download/v2.7.0/Tempo-Setup-2.7.0.exe\"}," +
+                  "{\"name\":\"SHA256SUMS.txt\",\"browser_download_url\":\"https://github.com/ColeDonMedia/tempo-time-tracker/releases/download/v2.7.0/SHA256SUMS.txt\"}]}";
+        var a = UpdateService.ParseAssets(rel);
+        Check("update: finds the installer and the checksum file", a.InstallerName == "Tempo-Setup-2.7.0.exe" && a.InstallerUrl!.EndsWith("/Tempo-Setup-2.7.0.exe") && a.SumsUrl!.EndsWith("/SHA256SUMS.txt"));
+        Check("update: download links from anywhere else are ignored",
+            UpdateService.ParseAssets(rel.Replace("https://github.com/ColeDonMedia/tempo-time-tracker/releases/download/v2.7.0/Tempo-Setup", "https://evil.example/Tempo-Setup")).InstallerUrl == null
+            && !UpdateService.IsTrustedDownload("https://github.com/ColeDonMedia/tempo-time-tracker/releases/tag/v2.7.0")
+            && UpdateService.IsTrustedDownload("https://github.com/ColeDonMedia/tempo-time-tracker/releases/download/v2.7.0/Tempo-Setup-2.7.0.exe"));
+        var sums = "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789  Tempo.exe\n0000000000000000000000000000000000000000000000000000000000000001  Tempo-Setup-2.7.0.exe\n";
+        Check("update: reads the expected hash for a file", UpdateService.ExpectedHash(sums, "Tempo-Setup-2.7.0.exe") == "0000000000000000000000000000000000000000000000000000000000000001" && UpdateService.ExpectedHash(sums, "Other.exe") == null);
+
+        // the log grows at the end, so the newest error is last
+        var log = new string('x', 20000) + "\n11/18/2026 10:00:00\nSystem.IO.IOException: The file C:\\Users\\sam\\AppData\\Local\\TempoStudio\\tempo-data.json is locked\n";
+        var url = Problem.IssueUrl("2.7.0", "Windows 11 (26100)", log, @"C:\Users\sam");
+        var body = Uri.UnescapeDataString(url[(url.IndexOf("body=") + 5)..]);
+        Check("problem report: pre-filled GitHub issue with version and Windows build", url.StartsWith("https://github.com/ColeDonMedia/tempo-time-tracker/issues/new?") && body.Contains("2.7.0") && body.Contains("26100"));
+        Check("problem report: your user folder is hidden and the link stays short", !body.Contains(@"C:\Users\sam") && body.Contains(@"%USERPROFILE%\AppData") && url.Length < 7000, url.Length.ToString());
     }
 
     // ---------- phase 9: folder sync between devices / team members ----------

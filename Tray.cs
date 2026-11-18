@@ -105,11 +105,14 @@ public sealed class TrayService : IDisposable
                     State.Toast(s != null ? Loc.F("Saved {0} to {1}", Fmt.Hm(ms), pr?.Name) : "Timer cleared");
                 }
                 break;
-            case ID_QUIT: Quitting = true; Application.Current.Shutdown(); break;
+            case ID_QUIT: Quit(); break;
         }
     }
 
     public void Show() => MainWindow.Instance.ShowFull();
+
+    /// <summary>Really quit (even when "close to tray" is on).</summary>
+    public void Quit() { Quitting = true; Application.Current.Shutdown(); }
 
     public void Update()
     {
