@@ -10,6 +10,7 @@ namespace Tempo;
 public partial class MainWindow : Window
 {
     public static MainWindow Instance { get; private set; } = null!;
+    public Grid RootGridPublic => RootGrid;
 
     readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
     readonly Dictionary<string, RadioButton> nav = new();
@@ -72,6 +73,7 @@ public partial class MainWindow : Window
         Grid.SetColumn(pinBtn, 1); viewRow.Children.Add(pinBtn);
         DockPanel.SetDock(viewRow, Dock.Bottom);
         SidebarDock.Children.Insert(SidebarDock.Children.Count - 1, viewRow);
+        BuildSearchButton();
         ApplyChrome();
         State.Changed += OnChanged;
         State.ToastRequested += ShowToast;
@@ -80,15 +82,91 @@ public partial class MainWindow : Window
         tick.Start();
         PreviewKeyDown += OnKey;
         tray = new TrayService(this);
+        hotkey = new HotkeyService();
+        hotkey.Pressed += () => Dispatcher.BeginInvoke(new Action(ToggleTimerGlobal));
+        ApplyHotkey(false);
         Closing += (_, e) =>
         {
             State.Save();
-            if (State.Data.Settings.CloseToTray && !tray!.Quitting) { e.Cancel = true; Hide(); }
+            if (State.Data.Settings.CloseToTray && !tray!.Quitting) { e.Cancel = true; Hide(); return; }
+            BackupService.RunNow();
         };
-        Closed += (_, _) => { mini?.Shutdown(); tray?.Dispose(); };
+        Closed += (_, _) => { mini?.Shutdown(); tray?.Dispose(); hotkey?.Dispose(); };
         Navigate("Overview");
         UpdateMini();
         Dispatcher.BeginInvoke(new Action(RunRecurring), DispatcherPriority.Loaded);
+        Dispatcher.BeginInvoke(new Action(() => { lastBackupCheck = DateTime.UtcNow; BackupService.RunIfDue(); }), DispatcherPriority.ApplicationIdle);
+        Dispatcher.BeginInvoke(new Action(CheckForUpdate), DispatcherPriority.ApplicationIdle);
+    }
+
+    DateTime lastUpdateCheck = DateTime.MinValue;
+
+    /// <summary>Only when the user turned it on in Settings: at most once a day, ask GitHub for a newer release.</summary>
+    public async void CheckForUpdate()
+    {
+        if (!State.Data.Settings.CheckUpdates || (DateTime.UtcNow - lastUpdateCheck).TotalHours < 24) return;
+        lastUpdateCheck = DateTime.UtcNow;
+        if (await UpdateService.CheckAsync() is not { } rel) return;
+        ShowToastAction(Loc.F("Tempo {0} is available.", rel.Tag.TrimStart('v')), Loc.T("View release"), () =>
+        {
+            if (UpdateService.IsTrustedUrl(rel.Url))
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(rel.Url) { UseShellExecute = true }); } catch { }
+        });
+    }
+
+    HotkeyService? hotkey;
+    Button? searchBtn;
+    DateTime lastBackupCheck = DateTime.UtcNow;
+    DateTime? notTrackingSince, lastReminder, lastEndOfDayWarned;
+
+    /// <summary>Registers the global start/pause shortcut from Settings. Returns false if another app owns it.</summary>
+    public bool ApplyHotkey(bool tell = true)
+    {
+        if (hotkey == null) return false;
+        var ok = hotkey.Apply(State.Data.Settings.Hotkey);
+        if (!ok && tell) ShowToast("That shortcut is already used by another app.", true);
+        return ok;
+    }
+
+    /// <summary>The global shortcut: pause if running, else resume (or restart on the last project), else open Tempo.</summary>
+    void ToggleTimerGlobal()
+    {
+        if (State.Running) { State.PauseTimer(); Notify("Timer paused"); return; }
+        var p = State.Proj(State.Data.Timer.ProjectId)
+                ?? State.Data.Sessions.OrderByDescending(s => s.EndedAtUtc).Select(s => State.Proj(s.ProjectId)).FirstOrDefault(x => x is { Archived: false });
+        if (p != null)
+        {
+            State.StartTimer(p.Id, State.HasTimer ? State.Data.Timer.Task : "");
+            Notify(Loc.F("Now tracking {0}", p.Name));
+            return;
+        }
+        ShowFull(); Navigate("Overview");
+    }
+
+    /// <summary>A toast when Tempo is on screen, a Windows notification when it's hidden in the tray or mini view.</summary>
+    void Notify(string text)
+    {
+        if (IsVisible && WindowState != WindowState.Minimized) ShowToast(text);
+        else tray?.Balloon("Tempo", Loc.T(text));
+    }
+
+    void CheckReminders()
+    {
+        var s = State.Data.Settings;
+        var nowUtc = DateTime.UtcNow;
+        if (State.Running) notTrackingSince = null;
+        else notTrackingSince ??= nowUtc;
+        if (Reminders.ShouldRemind(State.Running, Idle.IdleFor, notTrackingSince, lastReminder, s.ReminderMinutes, nowUtc))
+        {
+            lastReminder = nowUtc;
+            Notify("You're not tracking time. Want to start the timer?");
+        }
+        var nowLocal = State.ToLocal(nowUtc);
+        if (Reminders.ShouldWarnEndOfDay(State.Running, s.EndOfDayTime, nowLocal, lastEndOfDayWarned))
+        {
+            lastEndOfDayWarned = nowLocal.Date;
+            Notify("Your timer is still running. Did you forget to stop it?");
+        }
     }
 
     DateTime lastRecurringCheck = DateTime.MinValue;
@@ -121,8 +199,20 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Re-applies the current language to the whole window without restarting.</summary>
+    void BuildSearchButton()
+    {
+        if (searchBtn != null) SidebarDock.Children.Remove(searchBtn);
+        searchBtn = Ui.Btn("Search…", CommandPalette.Open, "GlassButton", Icons.Search, "Search or jump to…");
+        searchBtn.ToolTip += " (Ctrl+K)";
+        searchBtn.HorizontalContentAlignment = HorizontalAlignment.Left;
+        searchBtn.Margin = new Thickness(0, 0, 0, 18);
+        DockPanel.SetDock(searchBtn, Dock.Top);
+        SidebarDock.Children.Insert(1, searchBtn);
+    }
+
     public void RefreshLanguage()
     {
+        BuildSearchButton();
         ApplyChrome();
         UpdateMini();
         Navigate(currentKey == "" ? "Overview" : currentKey);
@@ -146,6 +236,7 @@ public partial class MainWindow : Window
         PageHost.Content = page;
         Scroller.ScrollToTop();
 
+        if (!SystemParameters.ClientAreaAnimation) { PageHost.Opacity = 1; PageHost.RenderTransform = null; return; }   // Windows "Animation effects" off
         PageHost.Opacity = 0;
         var slide = new TranslateTransform(0, 12);
         PageHost.RenderTransform = slide;
@@ -198,6 +289,9 @@ public partial class MainWindow : Window
         tray?.Update();
         CheckIdle();
         if ((DateTime.UtcNow - lastRecurringCheck).TotalMinutes >= 60) RunRecurring();
+        if (State.Data.Settings.CheckUpdates && (DateTime.UtcNow - lastUpdateCheck).TotalHours >= 24) CheckForUpdate();
+        if ((DateTime.UtcNow - lastBackupCheck).TotalHours >= 6) { lastBackupCheck = DateTime.UtcNow; BackupService.RunIfDue(); }
+        if (DateTime.UtcNow.Second % 15 == 0) CheckReminders();
         if (State.Running && State.ElapsedMs > 8 * 3600_000L && !longWarned)
         {
             longWarned = true;
@@ -222,7 +316,8 @@ public partial class MainWindow : Window
     void OnKey(object sender, KeyEventArgs e)
     {
         if (Keyboard.Modifiers != ModifierKeys.Control) return;
-        if (e.Key == Key.M) { e.Handled = true; ShowMini(); }
+        if (e.Key == Key.K) { e.Handled = true; CommandPalette.Open(); }
+        else if (e.Key == Key.M) { e.Handled = true; ShowMini(); }
         else if (e.Key == Key.Space)
         {
             e.Handled = true;
@@ -294,6 +389,7 @@ public partial class MainWindow : Window
         toastAction = action;
         ToastText.Text = message;
         ToastAction.Content = label;
+        Announce();
         ToastAction.Visibility = Visibility.Visible;
         ToastBorder.IsHitTestVisible = true;
         ToastDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "GoodBrush");
@@ -306,10 +402,19 @@ public partial class MainWindow : Window
         ToastBorder.BeginAnimation(OpacityProperty, a);
     }
 
+    /// <summary>Lets screen readers (Narrator, NVDA) read toasts out loud as they appear.</summary>
+    void Announce()
+    {
+        System.Windows.Automation.AutomationProperties.SetLiveSetting(ToastText, System.Windows.Automation.AutomationLiveSetting.Polite);
+        var peer = System.Windows.Automation.Peers.UIElementAutomationPeer.FromElement(ToastText) ?? System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(ToastText);
+        peer?.RaiseAutomationEvent(System.Windows.Automation.Peers.AutomationEvents.LiveRegionChanged);
+    }
+
     public void ShowToast(string message, bool error = false)
     {
         ToastAction.Visibility = Visibility.Collapsed; ToastBorder.IsHitTestVisible = false; toastAction = null;
         ToastText.Text = Loc.T(message);
+        Announce();
         ToastDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, error ? "WarnBrush" : "GoodBrush");
         var a = new DoubleAnimationUsingKeyFrames();
         a.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));

@@ -37,6 +37,7 @@ public class EntriesPage : PageBase
         var root = new StackPanel();
         root.Children.Add(Ui.Header("Time entries", "Completed sessions, with the rate saved when each one ended.",
             Ui.Btn("Add entry", () => EditEntry(null), "GlassButton", Icons.Plus),
+            Ui.Btn("Import…", EntryDialogs.Import, "GlassButton", Icons.Upload),
             Ui.Btn("Export CSV", ExportCsv, "GlassButton", Icons.Download)));
         root.Children.Add(TabStrip());
 
@@ -80,10 +81,46 @@ public class EntriesPage : PageBase
         return q.OrderByDescending(s => s.StartedAtUtc);
     }
 
+    /// <summary>Entries ticked for bulk actions (kept by id so a rebuild doesn't lose them).</summary>
+    internal static readonly HashSet<string> Selected = new();
+
+    UIElement BulkBar(StackPanel list)
+    {
+        var items = State.Data.Sessions.Where(s => Selected.Contains(s.Id)).ToList();
+        var bar = new WrapPanel { Margin = new Thickness(6, 2, 6, 10) };
+        var label = Ui.Text(Loc.F("{0} selected", items.Count), 13.5, "TextBrush", FontWeights.SemiBold);
+        label.VerticalAlignment = VerticalAlignment.Center; label.Margin = new Thickness(4, 0, 14, 8);
+        bar.Children.Add(label);
+        bar.Children.Add(Ui.Btn("Clear selection", () => { Selected.Clear(); FillList(list); }, "GhostButton").WithMargin(0, 0, 8, 8));
+        void Add(string text, Action a, string? icon, string style = "GlassButton") => bar.Children.Add(Ui.Btn(text, a, style, icon).WithMargin(0, 0, 8, 8));
+        if (items.Count >= 2)
+            Add("Merge", () =>
+            {
+                if (EntryTools.Merge(items) == null) { State.Toast("Only entries from one project that aren't invoiced can be merged.", true); return; }
+                Selected.Clear(); State.Toast("Entries merged");
+            }, Icons.Merge);
+        Add("Change project…", () => { if (EntryDialogs.BulkProject(items)) { Selected.Clear(); State.Notify(); } }, Icons.Folder);
+        Add("Add tag…", () => EntryDialogs.BulkTag(items), Icons.Tag);
+        Add("Billable", () => State.Toast(Loc.F("{0} entries updated", EntryTools.BulkEdit(items, null, true, null))), Icons.Dollar);
+        Add("Non-billable", () => State.Toast(Loc.F("{0} entries updated", EntryTools.BulkEdit(items, null, false, null))), Icons.Ban);
+        Add("Delete", () =>
+        {
+            var trash = items.Select(s => TrashBin.Add("Session", s, (string.IsNullOrWhiteSpace(s.Task) ? Loc.T("Work session") : s.Task) + " · " + Fmt.Hm(s.DurationMilliseconds))).ToList();
+            foreach (var s in items) State.Data.Sessions.Remove(s);
+            Selected.Clear(); State.Notify();
+            MainWindow.Instance.ShowToastAction(Loc.F("{0} entries deleted", trash.Count), Loc.T("Undo"), () => { foreach (var t in trash) TrashBin.Restore(t); State.Toast("Restored"); });
+        }, Icons.Trash, "DangerButton");
+        var card = new Border { CornerRadius = new CornerRadius(12), Padding = new Thickness(6, 8, 6, 0), Margin = new Thickness(0, 0, 0, 8), Child = bar };
+        card.SetResourceReference(Border.BackgroundProperty, "AccentSoftBrush");
+        return card;
+    }
+
     void FillList(StackPanel list)
     {
         list.Children.Clear();
         var all = Filtered().ToList();
+        Selected.RemoveWhere(id => State.Data.Sessions.All(s => s.Id != id));
+        if (Selected.Count > 0) list.Children.Add(BulkBar(list));
         if (all.Count == 0)
         {
             list.Children.Add(Ui.Empty(Icons.Clock, State.Data.Sessions.Count == 0 ? "No saved sessions yet" : "Nothing matches those filters",
@@ -108,16 +145,27 @@ public class EntriesPage : PageBase
                 var t = Ui.Text(Fmt.Hm(total), 12, "FaintBrush", FontWeights.SemiBold); Grid.SetColumn(t, 1); g.Children.Add(t);
                 list.Children.Add(g);
             }
-            list.Children.Add(SessionRow(s, true));
+            list.Children.Add(SessionRow(s, true, () => FillList(list)));
         }
         if (all.Count > limit)
             list.Children.Add(Ui.Btn(Loc.F("Show {0} more", Math.Min(120, all.Count - limit)), () => { limit += 120; FillList(list); }, "GhostButton").Center().WithMargin(0, 10, 0, 4));
     }
 
-    public static Border SessionRow(Session s, bool actions)
+    public static Border SessionRow(Session s, bool actions, Action? selectionChanged = null)
     {
         var p = State.Proj(s.ProjectId);
+        var outer = new Grid();
+        outer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        outer.ColumnDefinitions.Add(new ColumnDefinition());
+        if (selectionChanged != null)
+        {
+            var pick = new CheckBox { IsChecked = Selected.Contains(s.Id), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0), ToolTip = Loc.T("Select") };
+            System.Windows.Automation.AutomationProperties.SetName(pick, Loc.F("Select {0}", string.IsNullOrWhiteSpace(s.Task) ? Loc.T("Work session") : s.Task));
+            pick.Click += (_, _) => { if (pick.IsChecked == true) Selected.Add(s.Id); else Selected.Remove(s.Id); selectionChanged(); };
+            outer.Children.Add(pick);
+        }
         var g = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+        Grid.SetColumn(g, 1); outer.Children.Add(g);
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -151,7 +199,12 @@ public class EntriesPage : PageBase
             var right = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 0, 0, 0) };
             var inv = s.InvoiceId == null ? null : State.Data.Invoices.FirstOrDefault(i => i.Id == s.InvoiceId);
             if (s.InvoiceId != null) right.Children.Add(Ui.Pill(inv?.Number ?? "Invoiced", "GoodBrush", "GoodSoftBrush"));
-            else right.Children.Add(Ui.IconBtn(Icons.Edit, "Edit entry", () => EditEntry(s)));
+            else
+            {
+                right.Children.Add(Ui.IconBtn(Icons.Edit, "Edit entry", () => EditEntry(s)));
+                right.Children.Add(Ui.IconBtn(Icons.Split, "Split entry", () => EntryDialogs.Split(s)));
+            }
+            right.Children.Add(Ui.IconBtn(Icons.Copy, "Duplicate to today", () => { EntryTools.Duplicate(s, State.TodayLocal); State.Toast("Entry copied to today"); }));
             right.Children.Add(Ui.IconBtn(Icons.Trash, "Delete entry", () =>
             {
                 // no confirmation: deleting is instantly undoable (the invoice, if any, keeps its own copy of the lines)
@@ -162,7 +215,7 @@ public class EntriesPage : PageBase
             Grid.SetColumn(right, 4); g.Children.Add(right);
         }
 
-        var b = new Border { Padding = new Thickness(actions ? 10 : 4, 10, actions ? 6 : 4, 10), CornerRadius = new CornerRadius(12), Child = g, Background = System.Windows.Media.Brushes.Transparent };
+        var b = new Border { Padding = new Thickness(actions ? 10 : 4, 10, actions ? 6 : 4, 10), CornerRadius = new CornerRadius(12), Child = outer, Background = System.Windows.Media.Brushes.Transparent };
         b.MouseEnter += (_, _) => b.SetResourceReference(Border.BackgroundProperty, "HoverBrush");
         b.MouseLeave += (_, _) => b.Background = System.Windows.Media.Brushes.Transparent;
         return b;

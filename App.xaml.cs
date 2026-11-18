@@ -106,7 +106,8 @@ public partial class App : Application
             RunShots(win, Args[Array.IndexOf(Args, "--shot") + 1]);
             return;
         }
-        win.Show();
+        // Started by Windows at sign-in ("Start with Windows"): stay in the tray until clicked.
+        if (!Args.Contains("--background")) win.Show();
         if (State.LoadNotice != null) State.Toast(State.LoadNotice, true);
     }
 
@@ -146,6 +147,32 @@ public partial class App : Application
             using (var tfs = System.IO.File.Create(System.IO.Path.Combine(dir, $"{prefix}-{file}.png"))) tenc.Save(tfs);
         }
         EntriesPage.SetTab("Entries");
+        async Task Snap(string file)
+        {
+            await Task.Delay(900);
+            var r = (FrameworkElement)win.Content; r.UpdateLayout();
+            var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap((int)r.ActualWidth, (int)r.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            var bgv = new System.Windows.Media.DrawingVisual();
+            using (var dc = bgv.RenderOpen()) dc.DrawRectangle(win.Background, null, new Rect(0, 0, (int)r.ActualWidth, (int)r.ActualHeight));
+            bmp.Render(bgv); bmp.Render(r);
+            var en = new System.Windows.Media.Imaging.PngBitmapEncoder(); en.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+            using var f = System.IO.File.Create(System.IO.Path.Combine(dir, $"{prefix}-{file}.png")); en.Save(f);
+        }
+        // bulk selection bar
+        foreach (var s in State.Data.Sessions.OrderByDescending(x => x.StartedAtUtc).Take(3)) EntriesPage.Selected.Add(s.Id);
+        win.Navigate("Entries");
+        await Snap("entries-bulk");
+        EntriesPage.Selected.Clear();
+        // lower half of Settings (local check only: Settings shots show file paths, never publish them)
+        win.Navigate("Settings");
+        await Task.Delay(600);
+        win.Scroller.ScrollToVerticalOffset(2350);
+        await Snap("settings-lower");
+        // command palette
+        win.Navigate("Overview");
+        CommandPalette.Open();
+        await Snap("palette");
+        CommandPalette.Open();   // toggles closed
         foreach (var (tabName, file) in new[] { ("Quotes", "quotes"), ("Recurring", "recurring") })
         {
             InvoicesPage.SetTab(tabName);

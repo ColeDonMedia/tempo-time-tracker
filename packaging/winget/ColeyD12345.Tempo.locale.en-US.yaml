@@ -1,0 +1,23 @@
+PackageIdentifier: ColeyD12345.Tempo
+PackageVersion: {VERSION}
+PackageLocale: en-US
+Publisher: ColeyD12345
+PublisherUrl: https://github.com/ColeyD12345
+PackageName: Tempo
+PackageUrl: https://github.com/ColeyD12345/tempo-time-tracker
+License: MIT
+LicenseUrl: https://github.com/ColeyD12345/tempo-time-tracker/blob/main/LICENSE
+ShortDescription: Time tracking and invoicing for freelancers and small studios, with a glass Windows 11 look.
+Description: |-
+  Tempo tracks time per project and client, then turns it into invoices and quotes (PDF with a pay-now QR code).
+  It has budgets, reports, expenses, recurring invoices, a mini timer, global shortcut, reminders,
+  calendar and Toggl/Harvest/Clockify import, automatic backups and nine languages. All data stays on your PC.
+Tags:
+  - time-tracker
+  - timesheet
+  - invoicing
+  - freelance
+  - productivity
+ReleaseNotesUrl: https://github.com/ColeyD12345/tempo-time-tracker/releases/tag/v{VERSION}
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

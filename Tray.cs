@@ -121,6 +121,17 @@ public sealed class TrayService : IDisposable
         var d = Data(text); Shell_NotifyIcon(NIM_MODIFY, ref d);
     }
 
+    /// <summary>A Windows notification from the tray icon (used for reminders while the window is hidden).</summary>
+    public void Balloon(string title, string text)
+    {
+        var d = Data(lastText.Length > 0 ? lastText : "Tempo");
+        d.uFlags |= 0x10; // NIF_INFO
+        d.szInfoTitle = title.Length > 63 ? title[..63] : title;
+        d.szInfo = text.Length > 255 ? text[..255] : text;
+        d.dwInfoFlags = 1; // NIIF_INFO
+        Shell_NotifyIcon(NIM_MODIFY, ref d);
+    }
+
     public void Dispose()
     {
         var d = Data(""); Shell_NotifyIcon(NIM_DELETE, ref d);

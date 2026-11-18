@@ -206,23 +206,7 @@ public sealed class MiniWindow : Window
     }
 
     /// <summary>Choosing a different project: save what's running, then carry on tracking the new one.</summary>
-    void Switch(Project p)
-    {
-        var d = State.Data;
-        if (d.Timer.ProjectId == p.Id) return;
-        bool wasRunning = State.Running;
-        if (State.HasTimer)
-        {
-            var ms = State.ElapsedMs;
-            var old = State.Proj(d.Timer.ProjectId);
-            var s = State.StopTimer();
-            if (s != null) State.Toast(Loc.F("Saved {0} to {1}", Fmt.Hm(ms), old?.Name));
-        }
-        d.Timer.ProjectId = p.Id;
-        d.Timer.Task = "";
-        if (wasRunning) { State.StartTimer(p.Id, ""); State.Toast(Loc.F("Now tracking {0}", p.Name)); }
-        else State.Notify();
-    }
+    static void Switch(Project p) => State.SwitchProject(p);
 
     void Say(string msg)
     {

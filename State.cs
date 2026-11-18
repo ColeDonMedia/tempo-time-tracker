@@ -179,6 +179,20 @@ public static class State
         Notify();
     }
 
+    /// <summary>"I started 20 minutes ago": start the timer with that time already counted.</summary>
+    public static void StartTimerAgo(string projectId, string task, int minutesAgo)
+    {
+        if (HasTimer) StopTimer();
+        var now = DateTime.UtcNow;
+        minutesAgo = Math.Clamp(minutesAgo, 0, 24 * 60);
+        Data.Timer = new TimerSnapshot
+        {
+            ProjectId = projectId, Task = task, StartedAtUtc = now.AddMinutes(-minutesAgo),
+            AccumulatedMilliseconds = minutesAgo * 60_000L, RunSinceUtc = now,
+        };
+        Notify();
+    }
+
     public static void PauseTimer()
     {
         var t = Data.Timer;
@@ -234,6 +248,22 @@ public static class State
         Notify();
         if (saved != null) Budget.Check(project);
         return saved;
+    }
+
+    /// <summary>Move the timer to another project: saves the time so far to the old one and keeps running if it was.</summary>
+    public static void SwitchProject(Project p)
+    {
+        var t = Data.Timer;
+        if (t.ProjectId == p.Id) return;
+        bool wasRunning = Running;
+        if (HasTimer)
+        {
+            var ms = ElapsedMs; var old = Proj(t.ProjectId);
+            if (StopTimer() != null) Toast(Loc.F("Saved {0} to {1}", Fmt.Hm(ms), old?.Name));
+        }
+        Data.Timer.ProjectId = p.Id; Data.Timer.Task = "";
+        if (wasRunning) { StartTimer(p.Id, ""); Toast(Loc.F("Now tracking {0}", p.Name)); }
+        else Notify();
     }
 
     // ---------- aggregates ----------

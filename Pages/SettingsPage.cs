@@ -85,7 +85,11 @@ public class SettingsPage : PageBase
         var grace = Ui.Input(s.LateFeeGraceDays.ToString(), "0");
         grace.LostFocus += (_, _) => { if (int.TryParse(grace.Text, out var n) && n is >= 0 and <= 365) { s.LateFeeGraceDays = n; State.Save(); } else grace.Text = s.LateFeeGraceDays.ToString(); };
         var payL = Ui.Input(s.DefaultPayLink, "https://…");
-        payL.LostFocus += (_, _) => { s.DefaultPayLink = payL.Text.Trim(); State.Save(); };
+        payL.LostFocus += (_, _) =>
+        {
+            if (!SafeOpen.IsPayLink(payL.Text.Trim())) { payL.Text = s.DefaultPayLink; State.Toast("Pay links must start with https://", true); return; }
+            s.DefaultPayLink = payL.Text.Trim(); State.Save();
+        };
         bd.Children.Add(Pair(Ui.Field("DEFAULT TEMPLATE", tpl), Ui.Field("DEFAULT PAY LINK", payL)));
         bd.Children.Add(Pair(Ui.Field("LATE FEE (%)", lateP, 0), Ui.Field("GRACE PERIOD (DAYS)", grace, 0)));
         root.Children.Add(Block(bd));
@@ -143,6 +147,64 @@ public class SettingsPage : PageBase
         dp.Children.Add(row);
         root.Children.Add(Block(dp));
 
+        // ---------- Shortcuts & reminders ----------
+        var hk = Ui.Combo(HotkeyService.Choices, HotkeyService.Choices.Contains(s.Hotkey) ? s.Hotkey : "Off");
+        hk.SelectionChanged += (_, _) =>
+        {
+            var prev = s.Hotkey; s.Hotkey = (string)hk.SelectedItem;
+            if (!MainWindow.Instance.ApplyHotkey()) { s.Hotkey = prev; MainWindow.Instance.ApplyHotkey(false); }
+            State.Save();
+        };
+        var remindOpts = new[] { "Off", "Every 15 minutes", "Every 30 minutes", "Every 60 minutes" };
+        var remind = Ui.Combo(remindOpts, s.ReminderMinutes switch { 15 => remindOpts[1], 30 => remindOpts[2], 60 => remindOpts[3], _ => "Off" });
+        remind.SelectionChanged += (_, _) => { s.ReminderMinutes = Array.IndexOf(remindOpts, (string)remind.SelectedItem) switch { 1 => 15, 2 => 30, 3 => 60, _ => 0 }; State.Save(); };
+        var eod = Ui.Input(s.EndOfDayTime, "e.g. 18:00 (24-hour)");
+        eod.LostFocus += (_, _) =>
+        {
+            var v = eod.Text.Trim();
+            if (v.Length == 0 || TimeSpan.TryParse(v, out var tv) && tv < TimeSpan.FromDays(1)) { s.EndOfDayTime = v; State.Save(); }
+            else { eod.Text = s.EndOfDayTime; State.Toast("Use a time like 18:00.", true); }
+        };
+        var startup = Ui.Check("Start Tempo when I sign in to Windows (in the tray)", StartupService.Enabled);
+        startup.Click += (_, _) => { if (!StartupService.Set(startup.IsChecked == true)) { State.Toast("Windows didn't allow that change.", true); startup.IsChecked = StartupService.Enabled; } };
+        var sr = new StackPanel();
+        sr.Children.Add(Section("Shortcuts & reminders", "So you never lose billable time to a forgotten timer."));
+        sr.Children.Add(Pair(Ui.Field("GLOBAL SHORTCUT", hk), Ui.Field("REMIND ME TO TRACK", remind)));
+        sr.Children.Add(Pair(Ui.Field("END-OF-DAY CHECK", eod), new Border()));
+        sr.Children.Add(Ui.Text("The global shortcut starts or pauses the timer from any app. The end-of-day check warns you once if a timer is still running at that time.", 12, "FaintBrush", wrap: true).WithMargin(0, 0, 0, 12));
+        sr.Children.Add(startup);
+        root.Children.Add(Block(sr));
+
+        // ---------- Automatic backups ----------
+        var bk = new StackPanel();
+        bk.Children.Add(Section("Automatic backups", "Once a day, Tempo copies your data into a folder you choose, such as a OneDrive or Dropbox folder."));
+        var folderText = Ui.Text(string.IsNullOrEmpty(s.BackupFolder) ? Loc.T("Off: no folder chosen") : s.BackupFolder, 13, "MutedBrush");
+        folderText.TextTrimming = TextTrimming.CharacterEllipsis;
+        var folderRow = new WrapPanel();
+        folderRow.Children.Add(Ui.Btn("Choose folder…", () =>
+        {
+            var dlg = new Microsoft.Win32.OpenFolderDialog { Title = Loc.T("Choose a backup folder") };
+            if (dlg.ShowDialog() != true) return;
+            s.BackupFolder = dlg.FolderName; State.Save();
+            var f = BackupService.RunNow();
+            State.Toast(f != null ? "Backup saved" : "That folder can't be written to.", f == null);
+            Build();
+        }, "GlassButton", Icons.Folder).WithMargin(0, 0, 8, 8));
+        if (!string.IsNullOrEmpty(s.BackupFolder))
+        {
+            folderRow.Children.Add(Ui.Btn("Back up now", () => { var f = BackupService.RunNow(); State.Toast(f != null ? "Backup saved" : "That folder can't be written to.", f == null); Build(); }, "GlassButton", Icons.Download).WithMargin(0, 0, 8, 8));
+            folderRow.Children.Add(Ui.Btn("Turn off", () => { s.BackupFolder = ""; State.Save(); Build(); }, "GlassButton").WithMargin(0, 0, 8, 8));
+        }
+        var keepOpts = BackupService.KeepChoices.Select(n => Loc.F("{0} backups", n)).ToList();
+        var keep = Ui.Combo(keepOpts, keepOpts[Math.Max(0, Array.IndexOf(BackupService.KeepChoices, s.BackupKeep))]);
+        keep.IsEnabled = !string.IsNullOrEmpty(s.BackupFolder);
+        keep.SelectionChanged += (_, _) => { s.BackupKeep = BackupService.KeepChoices[Math.Max(0, keep.SelectedIndex)]; State.Save(); };
+        bk.Children.Add(Ui.Field("BACKUP FOLDER", folderText, 8));
+        bk.Children.Add(folderRow);
+        bk.Children.Add(Pair(Ui.Field("KEEP THE LAST", keep), new Border()));
+        if (BackupService.LastBackupUtc is DateTime lb) bk.Children.Add(Ui.Text(Loc.F("Last backup: {0}", Fmt.Time(State.ToLocal(lb))), 12, "FaintBrush"));
+        root.Children.Add(Block(bk));
+
         // ---------- Recently deleted ----------
         var tr = new StackPanel();
         tr.Children.Add(Section("Recently deleted", "Anything you delete waits here so you can bring it back. Nothing is removed for good until you empty this list."));
@@ -170,13 +232,17 @@ public class SettingsPage : PageBase
         var ab = new StackPanel();
         var ver = typeof(SettingsPage).Assembly.GetName().Version?.ToString(3) ?? "";
         ab.Children.Add(Section("About", Loc.F("Tempo {0}. A free, open-source studio time tracker for Windows 11.", ver)));
-        ab.Children.Add(Ui.Text("Everything, including the invoice PDF writer, is built in. Tempo has no third-party code and makes no network requests.", 12, "FaintBrush", wrap: true));
+        ab.Children.Add(Ui.Text("Everything, including the invoice PDF writer, is built in. Tempo has no third-party code and makes no network requests unless you turn on update checks.", 12, "FaintBrush", wrap: true).WithMargin(0, 0, 0, 12));
+        var upd = Ui.Check("Check GitHub for new versions once a day", s.CheckUpdates);
+        upd.Click += (_, _) => { s.CheckUpdates = upd.IsChecked == true; State.Save(); if (s.CheckUpdates) MainWindow.Instance.CheckForUpdate(); };
+        ab.Children.Add(upd);
+        ab.Children.Add(Ui.Text("Only the version number is fetched. Tempo never downloads or installs anything by itself.", 12, "FaintBrush", wrap: true).WithMargin(26, 2, 0, 0));
         root.Children.Add(Block(ab));
 
         // ---------- Shortcuts ----------
         var sc = new StackPanel();
         sc.Children.Add(Section("Keyboard shortcuts", ""));
-        foreach (var (k, v) in new[] { ("Ctrl + Space", "Start / pause the timer"), ("Ctrl + 1 … 7", "Jump between pages"), ("Ctrl + M", "Switch between full and mini view"), ("Enter / Esc", "Confirm / cancel dialogs") })
+        foreach (var (k, v) in new[] { ("Ctrl + Space", "Start / pause the timer"), (s.Hotkey == "Off" ? "—" : s.Hotkey.Replace("+", " + "), "Start / pause from any app"), ("Ctrl + K", "Search or jump to…"), ("Ctrl + 1 … 7", "Jump between pages"), ("Ctrl + M", "Switch between full and mini view"), ("Enter / Esc", "Confirm / cancel dialogs") })
         {
             var g = new Grid { Margin = new Thickness(0, 3, 0, 3) };
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) }); g.ColumnDefinitions.Add(new ColumnDefinition());

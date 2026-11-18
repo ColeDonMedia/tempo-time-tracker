@@ -23,7 +23,7 @@ public static class RecurringService
             PoNumber = r.PoNumber, IssuedUtc = issued, DueUtc = issued.AddDays(r.DueDays), PeriodFrom = issueDate.Date, PeriodTo = issueDate.Date,
             TimeZoneId = State.Tz.Id, Currency = string.IsNullOrEmpty(client?.Currency) ? s.CurrencyCode : client!.Currency,
             Lines = r.Lines.Select(l => new InvoiceLine { Description = l.Description, Hours = l.Hours, Rate = l.Rate, Amount = l.Amount, Kind = l.Kind }).ToList(),
-            TaxLabel = r.TaxLabel, TaxPercent = r.TaxPercent, Note = r.Note, Template = s.InvoiceTemplate, PayLink = s.DefaultPayLink,
+            TaxLabel = r.TaxLabel, TaxPercent = r.TaxPercent, Note = r.Note, Template = s.InvoiceTemplate, PayLink = SafeOpen.IsPayLink(s.DefaultPayLink) ? s.DefaultPayLink : "",
             PaymentInstructions = b.PaymentInstructions, StudioName = b.Name, StudioEmail = b.Email, StudioAddress = b.Address, TaxId = b.TaxId, LogoPath = b.LogoPath,
             RecurringId = r.Id
         };

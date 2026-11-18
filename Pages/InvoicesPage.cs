@@ -227,6 +227,7 @@ public class InvoicesPage : PageBase
         }
         lines.AddRange(custom.Where(l => !string.IsNullOrWhiteSpace(l.Description) || l.Amount != 0).Select(l => new InvoiceLine { Description = l.Description, Hours = l.Hours, Rate = l.Rate, Amount = l.Amount, Kind = "Custom" }));
 
+        if (!IsQuote && !SafeOpen.IsPayLink(payLink.Text.Trim())) { error = "Pay links must start with https://"; return null; }
         var now = DateTime.UtcNow;
         var inv = new Invoice
         {
@@ -452,7 +453,7 @@ public class InvoicesPage : PageBase
 
         var acts = new StackPanel { Orientation = Orientation.Horizontal };
         if (File.Exists(inv.FilePath))
-            acts.Children.Add(Ui.IconBtn(Icons.Doc, "Open PDF", () => { try { Process.Start(new ProcessStartInfo(inv.FilePath) { UseShellExecute = true }); } catch (Exception ex) { State.Toast(ex.Message, true); } }));
+            acts.Children.Add(Ui.IconBtn(Icons.Doc, "Open PDF", () => { if (!SafeOpen.Open(inv.FilePath, null, ".pdf")) State.Toast("That file couldn't be read.", true); }));
         acts.Children.Add(Ui.IconBtn(Icons.Download, "Re-export PDF", () => ReExport(inv)));
 
         if (inv.Kind == "Invoice")
@@ -601,7 +602,7 @@ public class InvoicesPage : PageBase
             Lines = quote.Lines.Select(l => new InvoiceLine { Description = l.Description, Hours = l.Hours, Rate = l.Rate, Amount = l.Amount, Kind = l.Kind }).ToList(),
             DiscountPercent = quote.DiscountPercent, TaxLabel = quote.TaxLabel, TaxPercent = quote.TaxPercent, Note = quote.Note, PaymentInstructions = d.Billing.PaymentInstructions,
             StudioName = quote.StudioName, StudioEmail = quote.StudioEmail, StudioAddress = quote.StudioAddress, TaxId = quote.TaxId, LogoPath = quote.LogoPath,
-            Template = quote.Template, PayLink = s.DefaultPayLink, ConvertedFrom = quote.Id
+            Template = quote.Template, PayLink = SafeOpen.IsPayLink(s.DefaultPayLink) ? s.DefaultPayLink : "", ConvertedFrom = quote.Id
         };
         InvoiceService.ApplyTotals(inv);
         d.Invoices.Add(inv);

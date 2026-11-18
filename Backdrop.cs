@@ -14,6 +14,16 @@ public static class Backdrop
 
     public static bool Supported => Environment.OSVersion.Version.Build >= 22621;
 
+    static bool TransparencyOn()
+    {
+        try
+        {
+            using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return k?.GetValue("EnableTransparency") is not int v || v != 0;
+        }
+        catch { return true; }
+    }
+
     public static void Apply(Window w)
     {
         var h = new WindowInteropHelper(w).Handle;
@@ -29,7 +39,8 @@ public static class Backdrop
 
         var mode = State.Data.Settings.Backdrop;
         var src = HwndSource.FromHwnd(h);
-        if (!Supported || mode == "Solid" || src?.CompositionTarget == null)
+        // High contrast and "transparency effects off" both mean: no see-through glass behind text.
+        if (!Supported || mode == "Solid" || SystemParameters.HighContrast || !TransparencyOn() || src?.CompositionTarget == null)
         {
             var none = new Margins();
             DwmExtendFrameIntoClientArea(h, ref none);

@@ -134,6 +134,25 @@ public class OverviewPage : PageBase
             Grid.SetColumn(stop, 1); btns.Children.Add(stop);
         }
         sp.Children.Add(btns);
+        if (!State.HasTimer)
+        {
+            var earlier = Ui.Btn("Forgot to start? I began earlier…", () =>
+            {
+                if (combo.SelectedItem is not Project p) { State.Toast("Choose a project first", true); return; }
+                var mins = new[] { 5, 10, 15, 20, 30, 45, 60, 90, 120 };
+                var labels = mins.Select(m => Loc.F("{0} minutes ago", m)).ToList();
+                var pick = Ui.Combo(labels, labels[3]);
+                var body = new StackPanel();
+                body.Children.Add(Ui.Text(Loc.F("Starts the timer on {0} with that time already counted.", p.Name), 13.5, "MutedBrush", wrap: true).WithMargin(0, 0, 0, 14));
+                body.Children.Add(Ui.Field("I STARTED", pick, 4));
+                Dialogs.Show("Start the timer earlier", body, "Start timer", () =>
+                {
+                    State.StartTimerAgo(p.Id, task.Text.Trim(), mins[Math.Max(0, pick.SelectedIndex)]);
+                    return true;
+                }, 420);
+            }, "GhostButton");
+            sp.Children.Add(earlier.Center().WithMargin(0, 8, 0, 0));
+        }
         sp.Children.Add(Ui.Text("Ctrl + Space starts or pauses from anywhere in Tempo", 11.5, "FaintBrush").WithMargin(0, 12, 0, 0).Center());
         return Ui.Card(sp);
     }

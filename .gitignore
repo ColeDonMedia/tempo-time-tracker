@@ -24,3 +24,6 @@ Thumbs.db
 
 ## Local design drafts
 logo-options/
+
+## Claude Code personal settings
+.claude/settings.local.json

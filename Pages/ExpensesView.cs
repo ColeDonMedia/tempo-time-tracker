@@ -73,7 +73,7 @@ public static class ExpensesView
 
         var acts = new StackPanel { Orientation = Orientation.Horizontal };
         if (!string.IsNullOrEmpty(e.ReceiptPath) && File.Exists(e.ReceiptPath))
-            acts.Children.Add(Ui.IconBtn(Icons.Receipt, "Open receipt", () => { try { Process.Start(new ProcessStartInfo(e.ReceiptPath) { UseShellExecute = true }); } catch (Exception ex) { State.Toast(ex.Message, true); } }));
+            acts.Children.Add(Ui.IconBtn(Icons.Receipt, "Open receipt", () => { if (!SafeOpen.Open(e.ReceiptPath, Path.Combine(State.Dir, "receipts"), ".pdf", ".png", ".jpg", ".jpeg")) State.Toast("That file couldn't be read.", true); }));
         if (e.InvoiceId != null)
         {
             var inv = State.Data.Invoices.FirstOrDefault(i => i.Id == e.InvoiceId);
@@ -110,7 +110,7 @@ public static class ExpensesView
         rl.VerticalAlignment = VerticalAlignment.Center; rl.Margin = new Thickness(12, 0, 0, 0);
         var pick = Ui.Btn("Choose file…", () =>
         {
-            var dlg = new OpenFileDialog { Title = Loc.T("RECEIPT (OPTIONAL)"), Filter = "Receipts (*.pdf;*.png;*.jpg;*.jpeg)|*.pdf;*.png;*.jpg;*.jpeg|All files (*.*)|*.*" };
+            var dlg = new OpenFileDialog { Title = Loc.T("RECEIPT (OPTIONAL)"), Filter = "Receipts (*.pdf;*.png;*.jpg;*.jpeg)|*.pdf;*.png;*.jpg;*.jpeg" };
             if (dlg.ShowDialog() != true) return;
             try
             {

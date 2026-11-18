@@ -3,7 +3,7 @@ namespace Tempo;
 // Columns: English | es | fr | de | pt | it | ja | zh | ko      (English text is the lookup key)
 public static partial class Loc
 {
-    static IEnumerable<string> AllRows() => RowsA.Concat(RowsB).Concat(RowsC).Concat(RowsD).Concat(RowsE);
+    internal static IEnumerable<string> AllRows() => RowsA.Concat(RowsB).Concat(RowsC).Concat(RowsD).Concat(RowsE).Concat(RowsF).Concat(RowsG);
 
     static readonly string[] RowsB =
     {
