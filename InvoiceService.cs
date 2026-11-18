@@ -69,9 +69,21 @@ public static class InvoiceService
         inv.Subtotal = inv.Lines.Sum(l => l.Amount);
         inv.DiscountAmount = Math.Round(inv.Subtotal * inv.DiscountPercent / 100m, 2);
         var taxable = inv.Subtotal - inv.DiscountAmount;
-        inv.TaxAmount = Math.Round(taxable * inv.TaxPercent / 100m, 2);
+        if (inv.ReverseCharge) inv.TaxAmount = 0m;
+        else if (inv.Taxes.Count > 0)
+        {
+            inv.TaxPercent = inv.Taxes.Sum(t => t.Percent);   // kept for older views that show one rate
+            inv.TaxAmount = inv.Taxes.Sum(t => TaxFor(taxable, t.Percent));
+        }
+        else inv.TaxAmount = TaxFor(taxable, inv.TaxPercent);
         inv.Total = taxable + inv.TaxAmount;
     }
+
+    public static decimal TaxFor(decimal taxable, decimal percent) => Math.Round(taxable * percent / 100m, 2);
+
+    /// <summary>The tax lines an invoice shows: its own list, or the single legacy tax.</summary>
+    public static List<TaxLine> TaxLines(Invoice inv) =>
+        inv.ReverseCharge ? new() : inv.Taxes.Count > 0 ? inv.Taxes : inv.TaxPercent != 0 ? new() { new TaxLine { Label = inv.TaxLabel, Percent = inv.TaxPercent } } : new();
 
     public static string NextQuoteNumber()
     {
@@ -204,7 +216,10 @@ public static class InvoiceService
         if (inv.TotalHours > 0) rows.Add((Tr("Total hours"), inv.TotalHours.ToString("0.00"), false));
         rows.Add((Tr("Subtotal"), Mo(inv.Subtotal), false));
         if (inv.DiscountAmount != 0) rows.Add((Loc.FFor(inv.Language, "Discount ({0}%)", Fmt.Dec(inv.DiscountPercent)), "-" + Mo(inv.DiscountAmount), false));
-        if (inv.TaxAmount != 0 || inv.TaxPercent != 0) rows.Add(($"{Tr(inv.TaxLabel)} ({Fmt.Dec(inv.TaxPercent)}%)", Mo(inv.TaxAmount), false));
+        var taxableAmt = inv.Subtotal - inv.DiscountAmount;
+        foreach (var tl in TaxLines(inv))
+            rows.Add(($"{Tr(tl.Label)} ({Fmt.Dec(tl.Percent)}%)", Mo(TaxFor(taxableAmt, tl.Percent)), false));
+        if (inv.ReverseCharge) rows.Add((Tr("VAT reverse charge"), Mo(0), false));
         if (inv.LateFeeAmount != 0) rows.Add((Tr("Late fee"), Mo(inv.LateFeeAmount), false));
         if (quote) rows.Add((Tr("Total").ToUpperInvariant(), Mo(inv.GrandTotal), true));
         else if (inv.Status == "Paid") rows.Add((Tr("TOTAL PAID"), Mo(inv.GrandTotal), true));
@@ -225,6 +240,18 @@ public static class InvoiceService
             page.Text(tx, y + (big ? 3 : 0), k, big ? 12 : 10, true, big ? Ink : Muted);
             page.TextRight(tx + tw, y, v, big ? 15 : 10, true, big ? accent : Ink);
             y += big ? 26 : 18;
+        }
+
+        // ---- reverse-charge statement (required wording on EU B2B invoices) ----
+        if (inv.ReverseCharge)
+        {
+            y += 6;
+            var rc = Tr("Reverse charge: VAT to be accounted for by the customer.") + (string.IsNullOrWhiteSpace(inv.ClientTaxId) ? "" : "  " + Tr("Customer VAT ID: ") + inv.ClientTaxId);
+            foreach (var ln in w.Wrap(rc, cw, 9.5, true))
+            {
+                if (y + 14 > limit) { page = w.AddPage(PW, PH); y = M; }
+                page.Text(M, y, ln, 9.5, true, Muted); y += 13;
+            }
         }
 
         // ---- payment details, pay link + QR, note ----

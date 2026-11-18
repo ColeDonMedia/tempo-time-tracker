@@ -21,6 +21,8 @@ public sealed class ReportRow
     public decimal Hours;
     public decimal BillableHours;
     public decimal Earned;
+    public decimal Cost;                      // hours × cost rate, base currency
+    public decimal Profit => Earned - Cost;
     public int Entries;
 }
 
@@ -28,6 +30,9 @@ public sealed class ReportResult
 {
     public List<ReportRow> Rows = new();
     public decimal TotalHours, BillableHours, Earned, Expenses;
+    public decimal Cost, CostExpenses;        // cost of time, and non-billable expenses (both base currency)
+    public decimal Profit => Earned - Cost - CostExpenses;
+    public HashSet<string> MissingRates = new();   // client currencies with no exchange rate (counted 1:1)
     public int Entries;
 }
 
@@ -62,12 +67,22 @@ public static class ReportEngine
         var res = new ReportResult { Entries = sessions.Count };
         var map = new Dictionary<string, ReportRow>();
 
+        // earnings are in each client's currency; reports add them up in the base currency
+        decimal EarnedBase(Session s)
+        {
+            var cur = Money.CurrencyOf(State.Proj(s.ProjectId));
+            if (Money.Rate(cur) == null) res.MissingRates.Add(cur);
+            return Money.ToBase(State.Earned(s), cur);
+        }
+        decimal CostOf(Session s) => Math.Round(s.DurationMilliseconds / 3600000m * Money.CostRate(State.Proj(s.ProjectId)), 2);
+
         void Add(string key, string label, Session s)
         {
             if (!map.TryGetValue(key, out var row)) map[key] = row = new ReportRow { Key = key, Label = label };
             var h = s.DurationMilliseconds / 3600000m;
             row.Hours += h; row.Entries++;
-            if (s.Billable) { row.BillableHours += h; row.Earned += State.Earned(s); }
+            row.Cost += CostOf(s);
+            if (s.Billable) { row.BillableHours += h; row.Earned += EarnedBase(s); }
         }
 
         foreach (var s in sessions)
@@ -91,13 +106,41 @@ public static class ReportEngine
 
         res.TotalHours = sessions.Sum(s => s.DurationMilliseconds) / 3600000m;
         res.BillableHours = sessions.Where(s => s.Billable).Sum(s => s.DurationMilliseconds) / 3600000m;
-        res.Earned = sessions.Where(s => s.Billable).Sum(State.Earned);
-        res.Expenses = d.Expenses.Where(e => ProjectOk(e.ProjectId) && InRange(e.Date)).Sum(e => e.Amount);
+        res.Earned = sessions.Where(s => s.Billable).Sum(EarnedBase);
+        res.Cost = sessions.Sum(CostOf);
+        var exp = d.Expenses.Where(e => ProjectOk(e.ProjectId) && InRange(e.Date)).ToList();
+        res.Expenses = exp.Sum(e => e.Amount);
+        res.CostExpenses = exp.Where(e => !e.Billable).Sum(e => e.Amount);   // billable expenses are passed on to the client
 
         res.Rows = f.GroupBy is "Day" or "Week" or "Month"
             ? map.Values.OrderBy(r => r.Key, StringComparer.Ordinal).ToList()
             : map.Values.OrderByDescending(r => r.Hours).ThenBy(r => r.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
         return res;
+    }
+
+    /// <summary>Tax collected on invoices issued between two local dates (void invoices and quotes left out).</summary>
+    public static List<TaxRow> TaxReport(DateTime fromLocal, DateTime toLocal)
+    {
+        var rows = new Dictionary<(string Cur, string Label, decimal Pct), (decimal Base, decimal Tax, int N)>();
+        foreach (var inv in State.Data.Invoices.Where(i => i.Kind == "Invoice" && i.Status != "Void"))
+        {
+            var day = State.ToLocal(inv.IssuedUtc).Date;
+            if (day < fromLocal.Date || day > toLocal.Date) continue;
+            var taxable = inv.Subtotal - inv.DiscountAmount;
+            var cur = inv.Currency.ToUpperInvariant();
+            void Add(string label, decimal pct, decimal tax)
+            {
+                var k = (cur, label, pct);
+                rows.TryGetValue(k, out var v);
+                rows[k] = (v.Base + taxable, v.Tax + tax, v.N + 1);
+            }
+            if (inv.ReverseCharge) { Add("Reverse charge", 0m, 0m); continue; }
+            var lines = InvoiceService.TaxLines(inv);
+            if (lines.Count == 0) Add("No tax", 0m, 0m);
+            foreach (var t in lines) Add(t.Label, t.Percent, InvoiceService.TaxFor(taxable, t.Percent));
+        }
+        return rows.Where(r => r.Key.Label != "No tax").Select(r => new TaxRow(r.Key.Cur, r.Key.Label, r.Key.Pct, r.Value.Base, r.Value.Tax, r.Value.N))
+                   .OrderBy(r => r.Currency).ThenBy(r => r.Label).ToList();
     }
 
     public static string Csv(ReportResult r, ReportFilter f)

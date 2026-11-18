@@ -170,6 +170,7 @@ public class ProjectsPage : PageBase
         };
 
         var bill = Ui.Check("Billable by default", editing?.Billable ?? true);
+        var costRate = Ui.Input(editing is { CostRate: > 0 } ? Fmt.Dec(editing.CostRate) : "", State.Data.Settings.DefaultCostRate > 0 ? Fmt.Dec(State.Data.Settings.DefaultCostRate) : "0");
 
         // ---- budget
         string TypeKey(string disp) => disp == "Fixed fee" ? "Fixed" : disp;
@@ -212,7 +213,11 @@ public class ProjectsPage : PageBase
         var body = new StackPanel();
         body.Children.Add(Ui.Field("PROJECT NAME", name));
         body.Children.Add(Ui.Field("CLIENT", cc));
-        body.Children.Add(Ui.Field(Loc.F("HOURLY RATE ({0})", cur), rate));
+        var rates = new Grid();
+        rates.ColumnDefinitions.Add(new ColumnDefinition()); rates.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) }); rates.ColumnDefinitions.Add(new ColumnDefinition());
+        var rf = Ui.Field(Loc.F("HOURLY RATE ({0})", cur), rate); var cf = Ui.Field(Loc.F("COST PER HOUR ({0})", State.Data.Settings.CurrencyCode), costRate);
+        Grid.SetColumn(cf, 2); rates.Children.Add(rf); rates.Children.Add(cf);
+        body.Children.Add(rates);
         body.Children.Add(bill.WithMargin(0, 0, 0, 14));
         body.Children.Add(Ui.Field("BUDGET TYPE", bt));
         body.Children.Add(bvRow);
@@ -224,6 +229,8 @@ public class ProjectsPage : PageBase
             if (string.IsNullOrWhiteSpace(name.Text)) { Dialogs.SetError(err, "Add a project name."); return false; }
             if (cc.SelectedItem is not Client client || client.Id == "__new") { Dialogs.SetError(err, "Choose or create a client for this project."); return false; }
             if (!Ui.TryDec(rate.Text, out var r) || r < 0) { Dialogs.SetError(err, "Enter an hourly rate like 85 or 37.50."); return false; }
+            decimal cr = 0;
+            if (costRate.Text.Trim().Length > 0 && (!Ui.TryDec(costRate.Text, out cr) || cr < 0)) { Dialogs.SetError(err, "Enter an hourly rate like 85 or 37.50."); return false; }
             var type = TypeKey((string)bt.SelectedItem);
             decimal bval = 0;
             if (type != "None" && (!Ui.TryDec(bv.Text, out bval) || bval <= 0)) { Dialogs.SetError(err, "Enter a budget like 40 or 1500."); return false; }
@@ -232,7 +239,7 @@ public class ProjectsPage : PageBase
             var period = type is "Hours" or "Amount" && (string)bp.SelectedItem == "Per month" ? "Monthly" : "Total";
             if (p.BudgetType != type || p.BudgetValue != bval || p.BudgetPeriod != period) { p.AlertedWarn = p.AlertedOver = false; p.AlertPeriodKey = ""; }
             p.Name = name.Text.Trim(); p.ClientId = client.Id; p.Client = client.Name; p.ClientEmail = client.Email; p.ClientAddress = client.Address;
-            p.HourlyRate = Math.Round(r, 2); p.Color = color; p.Billable = bill.IsChecked == true;
+            p.HourlyRate = Math.Round(r, 2); p.Color = color; p.Billable = bill.IsChecked == true; p.CostRate = Math.Round(cr, 2);
             p.BudgetType = type; p.BudgetValue = type == "None" ? 0 : bval; p.BudgetPeriod = period;
             if (editing == null) State.Data.Projects.Add(p);
             State.Notify();

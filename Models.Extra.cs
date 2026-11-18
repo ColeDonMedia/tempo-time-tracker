@@ -13,6 +13,7 @@ public class Client
     public string Currency { get; set; } = "";            // "" = use the app default
     public int? PaymentTermsDays { get; set; }
     public decimal? TaxPercent { get; set; }
+    public bool ReverseCharge { get; set; }               // business customer abroad: invoices carry no tax
     public bool Archived { get; set; }
     public override string ToString() => Name;
 }

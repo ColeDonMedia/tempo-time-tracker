@@ -74,6 +74,8 @@ public partial class App : Application
                 sample.Kind = "Quote"; sample.Number = "QUO-2026-004"; sample.Status = "Accepted"; sample.PayLink = ""; sample.IncludeTimesheet = false; sample.Timesheet.Clear();
                 sample.Lines = new() { new InvoiceLine { Description = "Investor deck design (20 slides)", Hours = 1, Rate = 2400, Amount = 2400, Kind = "Custom" }, new InvoiceLine { Description = "Two rounds of revisions", Hours = 2, Rate = 150, Amount = 300, Kind = "Custom" } };
             }
+            if (Args.Contains("--taxes")) sample.Taxes = new() { new TaxLine { Label = "GST", Percent = 5 }, new TaxLine { Label = "PST", Percent = 7 } };
+            if (Args.Contains("--reverse-charge")) { sample.ReverseCharge = true; sample.ClientTaxId = "DE123456789"; }
             InvoiceService.ApplyTotals(sample);
             InvoiceService.WritePdf(sample, Args[Array.IndexOf(Args, "--sample-pdf") + 1]);
             Shutdown(); return;

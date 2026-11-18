@@ -21,6 +21,7 @@ public class Project
     public bool AlertedWarn { get; set; }
     public bool AlertedOver { get; set; }
     public string AlertPeriodKey { get; set; } = "";
+    public decimal CostRate { get; set; }                  // what an hour costs you (0 = use the default cost rate)
 
     public override string ToString() => Label;
     [JsonIgnore] public string Label => string.IsNullOrWhiteSpace(Client) ? Name : $"{Name}  ·  {Client}";}
@@ -98,6 +99,15 @@ public class AppSettings
     public bool TrackActivity { get; set; }                // opt-in: sample the app in front every 30 s
     public bool ActivityTitles { get; set; } = true;       // also keep window titles (else app names only)
     public int ActivityKeepDays { get; set; } = 14;
+    public decimal DefaultCostRate { get; set; }            // per hour, in the base currency
+    /// <summary>How much one unit of a currency is worth in the base currency (CurrencyCode), e.g. "EUR" → 1.08.</summary>
+    public Dictionary<string, decimal> ExchangeRates { get; set; } = new();
+}
+
+public class TaxLine
+{
+    public string Label { get; set; } = "Tax";
+    public decimal Percent { get; set; }
 }
 
 public class InvoiceLine
@@ -157,6 +167,13 @@ public class Invoice
     public List<string> ExpenseIds { get; set; } = new();
     public string RecurringId { get; set; } = "";
     public string ConvertedFrom { get; set; } = "";
+    /// <summary>Several taxes (e.g. GST + PST). When empty, the single TaxLabel / TaxPercent applies.</summary>
+    public List<TaxLine> Taxes { get; set; } = new();
+    /// <summary>EU-style reverse charge: no tax is added and the invoice says the customer accounts for it.</summary>
+    public bool ReverseCharge { get; set; }
+    public string ClientTaxId { get; set; } = "";
+    public DateTime? LastReminderUtc { get; set; }
+    public int RemindersSent { get; set; }
 
     [JsonIgnore] public decimal GrandTotal => Total + LateFeeAmount;
     [JsonIgnore] public decimal AmountPaid => Payments.Sum(p => p.Amount);

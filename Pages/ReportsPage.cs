@@ -53,6 +53,7 @@ public class ReportsPage : PageBase
         var res = ReportEngine.Compute(f);
         var root = new StackPanel();
         root.Children.Add(Ui.Header("Reports", "See where your time and money went, by project, client, task, tag or period.",
+            Ui.Btn("Tax report", () => TaxReportDialog(f), "GlassButton", Icons.Receipt),
             Ui.Btn("Export CSV", () => ExportCsv(res, f), "GlassButton", Icons.Download),
             Ui.Btn("Export report PDF", () => ExportPdf(res, f), "GlassButton", Icons.Download)));
 
@@ -97,14 +98,28 @@ public class ReportsPage : PageBase
         root.Children.Add(wrap);
 
         // ---- KPIs
-        var kpis = new UniformGrid { Columns = 4, Margin = new Thickness(0, 0, 0, 18) };
+        bool costs = res.Cost > 0;
+        showProfit = costs;
+        var kpis = new UniformGrid { Columns = costs ? 5 : 4, Margin = new Thickness(0, 0, 0, 18) };
         void K(Border b, bool last = false) { b.Margin = new Thickness(0, 0, last ? 0 : 14, 0); kpis.Children.Add(b); }
         var pct = res.TotalHours > 0 ? (int)Math.Round(res.BillableHours / res.TotalHours * 100) : 0;
         K(Ui.Metric("Tracked", Fmt.Hm((long)(res.TotalHours * 3600000m)), RangeText(f)));
         K(Ui.Metric("Billable", Fmt.Hm((long)(res.BillableHours * 3600000m)), Loc.F("{0}% of tracked time", pct), "GoodBrush"));
         K(Ui.Metric("Earned", Fmt.Money(res.Earned), "billable time only", "AccentBrush"));
-        K(Ui.Metric("Expenses", Fmt.Money(res.Expenses), "in this range", "WarnBrush"), true);
+        K(Ui.Metric("Expenses", Fmt.Money(res.Expenses), "in this range", "WarnBrush"), !costs);
+        if (costs)
+        {
+            var margin = res.Earned > 0 ? (int)Math.Round(res.Profit / res.Earned * 100) : 0;
+            K(Ui.Metric("Profit", Fmt.Money(res.Profit), Loc.F("{0}% margin after costs", margin), res.Profit < 0 ? "DangerBrush" : "GoodBrush"), true);
+        }
         root.Children.Add(kpis);
+        if (res.MissingRates.Count > 0)
+        {
+            var warn = Ui.Text(Loc.F("No exchange rate for {0}, so those amounts are counted 1:1. Add rates in Settings → Billing defaults.", string.Join(", ", res.MissingRates.OrderBy(x => x))), 12.5, "WarnBrush", wrap: true);
+            root.Children.Add(warn.WithMargin(2, -6, 0, 14));
+        }
+        if (!costs)
+            root.Children.Add(Ui.Text("Tip: set a cost rate (what an hour costs you) in Settings or on a project to see profit here.", 12, "FaintBrush", wrap: true).WithMargin(2, -6, 0, 14));
 
         // ---- results
         var card = new StackPanel();
@@ -120,6 +135,7 @@ public class ReportsPage : PageBase
             AddCell(head, 2, Ui.Text(Loc.T("HOURS"), 10.5, "FaintBrush", FontWeights.SemiBold), true);
             AddCell(head, 3, Ui.Text(Loc.T("BILLABLE HOURS"), 10.5, "FaintBrush", FontWeights.SemiBold), true);
             AddCell(head, 4, Ui.Text(Loc.T("EARNED"), 10.5, "FaintBrush", FontWeights.SemiBold), true);
+            if (costs) AddCell(head, 5, Ui.Text(Loc.T("PROFIT"), 10.5, "FaintBrush", FontWeights.SemiBold), true);
             card.Children.Add(head);
 
             var max = res.Rows.Max(r => r.Hours); if (max <= 0) max = 1;
@@ -133,6 +149,7 @@ public class ReportsPage : PageBase
                 AddCell(g, 2, Ui.Text(row.Hours.ToString("0.00", CultureInfo.CurrentCulture), 13.5, "TextBrush", FontWeights.SemiBold), true);
                 AddCell(g, 3, Ui.Text(row.BillableHours.ToString("0.00", CultureInfo.CurrentCulture), 13.5, "MutedBrush"), true);
                 AddCell(g, 4, Ui.Text(Fmt.Money(row.Earned), 13.5, "TextBrush"), true);
+                if (costs) AddCell(g, 5, Ui.Text(Fmt.Money(row.Profit), 13.5, row.Profit < 0 ? "DangerBrush" : "MutedBrush"), true);
                 card.Children.Add(g);
             }
             var tot = new Grid { Margin = new Thickness(4, 14, 4, 2) };
@@ -141,11 +158,14 @@ public class ReportsPage : PageBase
             AddCell(tot, 2, Ui.Text(res.TotalHours.ToString("0.00", CultureInfo.CurrentCulture), 13.5, "TextBrush", FontWeights.Bold), true);
             AddCell(tot, 3, Ui.Text(res.BillableHours.ToString("0.00", CultureInfo.CurrentCulture), 13.5, "MutedBrush", FontWeights.Bold), true);
             AddCell(tot, 4, Ui.Text(Fmt.Money(res.Earned), 13.5, "AccentBrush", FontWeights.Bold), true);
+            if (costs) AddCell(tot, 5, Ui.Text(Fmt.Money(res.Earned - res.Cost), 13.5, "TextBrush", FontWeights.Bold), true);
             card.Children.Add(tot);
         }
         root.Children.Add(Ui.Card(card, 18));
         Content = root;
     }
+
+    static bool showProfit;
 
     static void SetCols(Grid g)
     {
@@ -154,6 +174,46 @@ public class ReportsPage : PageBase
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(showProfit ? 110 : 0) });   // profit (only when cost rates are set)
+    }
+
+    /// <summary>Tax collected per tax and currency for the chosen range, with CSV export (for VAT / GST / sales-tax returns).</summary>
+    static void TaxReportDialog(ReportFilter f)
+    {
+        var from = f.From ?? State.Data.Invoices.Select(i => State.ToLocal(i.IssuedUtc).Date).DefaultIfEmpty(State.TodayLocal).Min();
+        var to = f.To ?? State.TodayLocal;
+        var rows = ReportEngine.TaxReport(from, to);
+        var body = new StackPanel();
+        body.Children.Add(Ui.Text(Loc.F("Invoices issued {0} – {1}. Void invoices and quotes are left out.", Fmt.Date(from), Fmt.Date(to)), 13, "MutedBrush", wrap: true).WithMargin(0, 0, 0, 12));
+        if (rows.Count == 0) body.Children.Add(Ui.Text("No tax was charged on invoices in this range.", 13.5, "FaintBrush"));
+        else
+        {
+            var g = new Grid();
+            foreach (var w in new[] { 1.6, 1, 1.2, 1.2, 0.7 }) g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(w, GridUnitType.Star) });
+            int r = 0;
+            void Row(bool head, params string[] cells)
+            {
+                g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                for (int c = 0; c < cells.Length; c++)
+                {
+                    var t = Ui.Text(cells[c], head ? 10.5 : 13.5, head ? "FaintBrush" : "TextBrush", head ? FontWeights.SemiBold : FontWeights.Normal);
+                    t.Margin = new Thickness(0, 4, 8, 4); if (c > 0) t.TextAlignment = TextAlignment.Right;
+                    Grid.SetRow(t, r); Grid.SetColumn(t, c); g.Children.Add(t);
+                }
+                r++;
+            }
+            Row(true, Loc.T("TAX"), Loc.T("RATE %"), Loc.T("TAXABLE AMOUNT"), Loc.T("TAX"), Loc.T("INVOICES"));
+            foreach (var x in rows) Row(false, Loc.T(x.Label), x.Label == "Reverse charge" ? "—" : Fmt.Dec(x.Percent), Fmt.Money(x.Base, x.Currency), Fmt.Money(x.Tax, x.Currency), x.Invoices.ToString());
+            body.Children.Add(g);
+        }
+        if (!Dialogs.Show("Tax report", body, rows.Count > 0 ? "Export CSV…" : "Close", null, 640) || rows.Count == 0) return;
+        var dlg = new Microsoft.Win32.SaveFileDialog { Title = Loc.T("Tax report"), Filter = "CSV (*.csv)|*.csv", FileName = $"tax-report-{from:yyyy-MM-dd}-{to:yyyy-MM-dd}.csv" };
+        if (dlg.ShowDialog() != true) return;
+        var inv = CultureInfo.InvariantCulture;
+        var sb = new System.Text.StringBuilder("Currency,Tax,Rate %,Taxable amount,Tax,Invoices\r\n");
+        foreach (var x in rows) sb.Append($"{x.Currency},\"{x.Label.Replace("\"", "\"\"")}\",{x.Percent.ToString(inv)},{x.Base.ToString("0.00", inv)},{x.Tax.ToString("0.00", inv)},{x.Invoices}\r\n");
+        try { System.IO.File.WriteAllText(dlg.FileName, sb.ToString()); State.Toast("Tax report saved"); }
+        catch (Exception ex) { State.Toast(ex.Message, true); }
     }
 
     static void AddCell(Grid g, int col, UIElement e, bool right)

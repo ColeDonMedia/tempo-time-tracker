@@ -37,7 +37,8 @@ public static class Icons
     public const string Copy = "M9,9 H20 V20 H9 Z M5,15 V4 H16";
     public const string Tag = "M3,12 L12,3 H20 V11 L11,20 Z M16,8 H16.01";
     public const string Undo = "M9,7 L4,12 L9,17 M4,12 H15 A5,5 0 0 1 15,22 H11";
-    public const string Bell = "M6,17 V11 A6,6 0 0 1 18,11 V17 L20,19 H4 Z M10,21 H14";
+    public const string Mail = "M3,6 H21 V18 H3 Z M3,6 L12,13 L21,6";
+    public const string Bell ="M6,17 V11 A6,6 0 0 1 18,11 V17 L20,19 H4 Z M10,21 H14";
     public const string Link = "M10,14 A4,4 0 0 0 15.7,14.3 L19,11 A4,4 0 0 0 13.3,5.3 L12,6.6 M14,10 A4,4 0 0 0 8.3,9.7 L5,13 A4,4 0 0 0 10.7,18.7 L12,17.4";
     public const string Dollar = "M12,3 V21 M16,7 H10 A3,3 0 0 0 10,13 H14 A3,3 0 0 1 14,19 H8";
     public const string Upload = "M12,20 V9 M7,14 L12,9 L17,14 M5,4 H19";

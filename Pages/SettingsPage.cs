@@ -98,7 +98,24 @@ public class SettingsPage : PageBase
             s.DefaultPayLink = payL.Text.Trim(); State.Save();
         };
         bd.Children.Add(Pair(Ui.Field("DEFAULT TEMPLATE", tpl), Ui.Field("DEFAULT PAY LINK", payL)));
-        bd.Children.Add(Pair(Ui.Field("LATE FEE (%)", lateP, 0), Ui.Field("GRACE PERIOD (DAYS)", grace, 0)));
+        bd.Children.Add(Pair(Ui.Field("LATE FEE (%)", lateP), Ui.Field("GRACE PERIOD (DAYS)", grace)));
+        var costR = Ui.Input(s.DefaultCostRate > 0 ? Fmt.Dec(s.DefaultCostRate) : "", "0");
+        costR.LostFocus += (_, _) =>
+        {
+            if (costR.Text.Trim().Length == 0) { s.DefaultCostRate = 0; State.Save(); return; }
+            if (Ui.TryDec(costR.Text, out var n) && n >= 0) { s.DefaultCostRate = Math.Round(n, 2); State.Save(); } else costR.Text = s.DefaultCostRate > 0 ? Fmt.Dec(s.DefaultCostRate) : "";
+        };
+        var ratesBox = Ui.Input(Money.FormatRates(s.ExchangeRates), "EUR = 1.08");
+        ratesBox.AcceptsReturn = true; ratesBox.MinHeight = 70; ratesBox.TextWrapping = TextWrapping.Wrap; ratesBox.VerticalContentAlignment = VerticalAlignment.Top;
+        ratesBox.LostFocus += (_, _) =>
+        {
+            var (rates, badLines) = Money.ParseRates(ratesBox.Text);
+            s.ExchangeRates = rates; State.Save();
+            if (badLines.Count > 0) State.Toast(Loc.F("Couldn't read: {0}. Use one line per currency, like EUR = 1.08.", string.Join(", ", badLines.Take(3))), true);
+            ratesBox.Text = Money.FormatRates(rates);
+        };
+        bd.Children.Add(Pair(Ui.Field(Loc.F("COST PER HOUR ({0})", s.CurrencyCode), costR, 0), Ui.Field(Loc.F("EXCHANGE RATES (1 UNIT = ? {0})", s.CurrencyCode), ratesBox, 0)));
+        bd.Children.Add(Ui.Text("Cost per hour is what an hour of work costs you (your pay, rent, software). Reports use it to show profit. Exchange rates turn other clients' currencies into yours in reports.", 12, "FaintBrush", wrap: true).WithMargin(0, 8, 0, 0));
         root.Children.Add(Block(bd));
 
         // ---------- Billing profile ----------

@@ -20,6 +20,8 @@ public class InvoicesPage : PageBase
     string Kind => IsQuote ? "Quote" : "Invoice";
 
     ComboBox project = null!, preset = null!, group = null!, template = null!;
+    TextBox tax2Label = null!, tax2Pct = null!;
+    CheckBox reverseCharge = null!;
     TextBox number = null!, from = null!, to = null!, dueDays = null!, taxLabel = null!, taxPct = null!, discount = null!, po = null!, note = null!, payLink = null!, fixedAmount = null!;
     CheckBox includeTime = null!, includeExpenses = null!, includeTimesheet = null!, billFixed = null!;
     StackPanel previewHost = null!, fixedRow = null!;
@@ -61,6 +63,8 @@ public class InvoicesPage : PageBase
         from = Ui.Input(); to = Ui.Input();
         dueDays = Ui.Input(s.PaymentTermsDays.ToString(), "14");
         taxLabel = Ui.Input(s.TaxLabel, "Tax"); taxPct = Ui.Input(Fmt.Dec(s.DefaultTaxPercent), "0");
+        tax2Label = Ui.Input("", "e.g. PST"); tax2Pct = Ui.Input("", "0");
+        reverseCharge = Ui.Check("Reverse charge: the customer accounts for VAT (no tax added)", false);
         discount = Ui.Input("0", "0"); po = Ui.Input("", "Optional");
         note = Ui.Input(d.Billing.Note, "Thank you for your business.");
         payLink = Ui.Input(s.DefaultPayLink, "https://…");
@@ -80,6 +84,7 @@ public class InvoicesPage : PageBase
             var c = State.ClientOf(p);
             dueDays.Text = (c?.PaymentTermsDays ?? (IsQuote ? 30 : s.PaymentTermsDays)).ToString();
             taxPct.Text = Fmt.Dec(c?.TaxPercent ?? s.DefaultTaxPercent);
+            reverseCharge.IsChecked = c?.ReverseCharge == true;
             bool fixedProject = p.BudgetType == "Fixed" && !IsQuote;
             fixedRow.Visibility = fixedProject ? Visibility.Visible : Visibility.Collapsed;
             fixedAmount.Text = fixedProject ? Fmt.Dec(p.BudgetValue) : "";
@@ -91,8 +96,8 @@ public class InvoicesPage : PageBase
         preset.SelectionChanged += (_, _) => { ApplyPreset(); Changed(); };
         group.SelectionChanged += (_, _) => Changed();
         template.SelectionChanged += (_, _) => Changed();
-        foreach (var t in new[] { number, from, to, dueDays, taxLabel, taxPct, discount, po, note, payLink, fixedAmount }) t.TextChanged += (_, _) => Changed();
-        foreach (var c in new[] { includeTime, includeExpenses, includeTimesheet, billFixed }) { c.Checked += (_, _) => Changed(); c.Unchecked += (_, _) => Changed(); }
+        foreach (var t in new[] { number, from, to, dueDays, taxLabel, taxPct, tax2Label, tax2Pct, discount, po, note, payLink, fixedAmount }) t.TextChanged += (_, _) => Changed();
+        foreach (var c in new[] { includeTime, includeExpenses, includeTimesheet, billFixed, reverseCharge }) { c.Checked += (_, _) => Changed(); c.Unchecked += (_, _) => Changed(); }
         from.TextChanged += (_, _) => { if (!building && (string)preset.SelectedItem != "Custom" && !applying) preset.SelectedItem = "Custom"; };
         to.TextChanged += (_, _) => { if (!building && (string)preset.SelectedItem != "Custom" && !applying) preset.SelectedItem = "Custom"; };
 
@@ -108,6 +113,8 @@ public class InvoicesPage : PageBase
         }
         else form.Children.Add(Pair(Ui.Field("VALID FOR (DAYS)", dueDays), Ui.Field("TEMPLATE", template)));
         form.Children.Add(Pair(Ui.Field("TAX LABEL", taxLabel), Ui.Field("RATE %", taxPct)));
+        form.Children.Add(Pair(Ui.Field("SECOND TAX (OPTIONAL)", tax2Label), Ui.Field("RATE %", tax2Pct)));
+        form.Children.Add(reverseCharge.WithMargin(0, 0, 0, 14));
         form.Children.Add(Pair(Ui.Field("DISCOUNT %", discount), IsQuote ? new StackPanel() : Ui.Field("TEMPLATE", template)));
         if (!IsQuote)
         {
@@ -209,6 +216,7 @@ public class InvoicesPage : PageBase
             if (t < f) { error = "The end date is before the start date."; return null; }
         }
         if (!Ui.TryDec(taxPct.Text.Length == 0 ? "0" : taxPct.Text, out var tax) || tax < 0 || tax > 100) { error = "Tax % should be between 0 and 100."; return null; }
+        if (!Ui.TryDec(tax2Pct.Text.Length == 0 ? "0" : tax2Pct.Text, out var tax2) || tax2 < 0 || tax2 > 100) { error = "Tax % should be between 0 and 100."; return null; }
         if (!Ui.TryDec(discount.Text.Length == 0 ? "0" : discount.Text, out var disc) || disc < 0 || disc > 100) { error = "Discount % should be between 0 and 100."; return null; }
         if (!int.TryParse(dueDays.Text.Length == 0 ? "0" : dueDays.Text, out var due) || due < 0 || due > 365) { error = "Due days should be a number from 0 to 365."; return null; }
 
@@ -242,6 +250,10 @@ public class InvoicesPage : PageBase
             IncludeTimesheet = !IsQuote && includeTimesheet.IsChecked == true, Status = IsQuote ? "Sent" : "Issued"
         };
         if (inv.IncludeTimesheet) inv.Timesheet = InvoiceService.TimesheetLines(sessions);
+        if (tax2 > 0)
+            inv.Taxes = new() { new TaxLine { Label = inv.TaxLabel, Percent = tax }, new TaxLine { Label = string.IsNullOrWhiteSpace(tax2Label.Text) ? "Tax" : tax2Label.Text.Trim(), Percent = tax2 } };
+        inv.ReverseCharge = reverseCharge.IsChecked == true;
+        inv.ClientTaxId = client?.TaxId ?? "";
         InvoiceService.ApplyTotals(inv);
         return new Draft(inv, sessions, expenses);
     }
@@ -328,7 +340,10 @@ public class InvoicesPage : PageBase
             if (inv.TotalHours > 0) Tot(Loc.T("Total hours"), inv.TotalHours.ToString("0.00"));
             if (inv.DiscountAmount != 0 || inv.TaxAmount != 0) Tot(Loc.T("Subtotal"), Fmt.Money(inv.Subtotal, inv.Currency));
             if (inv.DiscountAmount != 0) Tot(Loc.F("Discount ({0}%)", Fmt.Dec(inv.DiscountPercent)), "-" + Fmt.Money(inv.DiscountAmount, inv.Currency));
-            if (inv.TaxAmount != 0) Tot($"{Loc.T(inv.TaxLabel)} ({Fmt.Dec(inv.TaxPercent)}%)", Fmt.Money(inv.TaxAmount, inv.Currency));
+            var taxable = inv.Subtotal - inv.DiscountAmount;
+            foreach (var tl in InvoiceService.TaxLines(inv).Where(x => x.Percent != 0))
+                Tot($"{Loc.T(tl.Label)} ({Fmt.Dec(tl.Percent)}%)", Fmt.Money(InvoiceService.TaxFor(taxable, tl.Percent), inv.Currency));
+            if (inv.ReverseCharge) Tot(Loc.T("VAT reverse charge"), Fmt.Money(0, inv.Currency));
             Tot(IsQuote ? Loc.T("Total").ToUpperInvariant() : Loc.T("TOTAL DUE"), Fmt.Money(inv.GrandTotal, inv.Currency), true);
             if (!IsQuote && !string.IsNullOrWhiteSpace(inv.PayLink))
                 paper.Children.Add(T(Loc.T("PAY ONLINE") + ": " + inv.PayLink, 11, blue).WithMargin(0, 10, 0, 0));
@@ -455,9 +470,13 @@ public class InvoicesPage : PageBase
         if (File.Exists(inv.FilePath))
             acts.Children.Add(Ui.IconBtn(Icons.Doc, "Open PDF", () => { if (!SafeOpen.Open(inv.FilePath, null, ".pdf")) State.Toast("That file couldn't be read.", true); }));
         acts.Children.Add(Ui.IconBtn(Icons.Download, "Re-export PDF", () => ReExport(inv)));
+        if (inv.Status != "Void")
+            acts.Children.Add(Ui.IconBtn(Icons.Mail, inv.Kind == "Quote" ? "Email quote" : "Email invoice", () => Email(inv, false)));
 
         if (inv.Kind == "Invoice")
         {
+            if (inv.Status == "Issued" && inv.Balance > 0 && inv.DueUtc < DateTime.UtcNow)
+                acts.Children.Add(Ui.IconBtn(Icons.Bell, inv.RemindersSent > 0 ? Loc.F("Send another reminder (last sent {0})", Fmt.Date(State.ToLocal(inv.LastReminderUtc ?? DateTime.UtcNow))) : "Send payment reminder", () => Email(inv, true)));
             if (LateFeeDue(inv))
                 acts.Children.Add(Ui.Btn(Loc.F("Apply late fee ({0}%)", Fmt.Dec(State.Data.Settings.LateFeePercent)), () => ApplyLateFee(inv), "GhostButton").WithMargin(0, 0, 4, 0));
             if (inv.Status == "Issued")
@@ -612,6 +631,30 @@ public class InvoicesPage : PageBase
         tab = "Invoices";
         State.Notify();
         State.Toast(Loc.F("Invoice {0} created from quote {1}", inv.Number, quote.Number));
+    }
+
+    /// <summary>Opens a ready-to-send email in the user's mail app with the PDF attached (they press Send).</summary>
+    static void Email(Invoice inv, bool reminder)
+    {
+        // make sure there is an up-to-date PDF to attach
+        var pdf = inv.FilePath;
+        if (!SafeOpen.IsAllowed(pdf, null, ".pdf") || !File.Exists(pdf))
+        {
+            var dir = Path.Combine(State.Dir, "invoices");
+            Directory.CreateDirectory(dir);
+            pdf = Path.Combine(dir, InvoiceService.SafeName($"{inv.Number} {inv.ClientName}") + ".pdf");
+            try { InvoiceService.WritePdf(inv, pdf); inv.FilePath = pdf; }
+            catch (Exception ex) { State.Toast(Loc.T("Couldn't create the PDF: ") + ex.Message, true); return; }
+        }
+        if (string.IsNullOrWhiteSpace(inv.ClientEmail)) State.Toast("This client has no email address yet. Add it on the Clients page.", true);
+        var (to, subject, body) = InvoiceEmail.Compose(inv, reminder, DateTime.UtcNow);
+        if (!Mailer.Compose(to, subject, body, pdf))
+        {
+            Mailer.Fallback(to, subject, body, pdf);
+            State.Toast("Your mail app didn't accept an attachment, so the PDF is shown in its folder. Drag it into the email.");
+        }
+        if (reminder) { inv.RemindersSent++; inv.LastReminderUtc = DateTime.UtcNow; }
+        State.Notify();
     }
 
     static void ReExport(Invoice inv)

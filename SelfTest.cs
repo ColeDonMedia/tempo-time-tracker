@@ -205,6 +205,84 @@ public static class SelfTest
         Updates();
         Hardening();
         TrackingTests();
+        MoneyTests();
+    }
+
+    // ---------- phase 8: profit, currencies, taxes, email ----------
+    static void MoneyTests()
+    {
+        State.Data = new Workspace(); State.Normalize();
+        var st = State.Data.Settings;
+        st.CurrencyCode = "USD"; st.DefaultCostRate = 30m; st.ExchangeRates["EUR"] = 1.10m;
+        var eu = new Client { Name = "Berlin GmbH", Currency = "EUR", TaxId = "DE123456789", ReverseCharge = true };
+        var us = new Client { Name = "Austin Co" };
+        var jp = new Client { Name = "Tokyo KK", Currency = "JPY" };
+        State.Data.Clients.AddRange(new[] { eu, us, jp });
+        var pe = new Project { Id = "pe", Name = "EU work", ClientId = eu.Id, HourlyRate = 100 };           // EUR, default cost 30
+        var pu = new Project { Id = "pu", Name = "US work", ClientId = us.Id, HourlyRate = 80, CostRate = 50 };
+        var pj = new Project { Id = "pj", Name = "JP work", ClientId = jp.Id, HourlyRate = 10000 };
+        State.Data.Projects.AddRange(new[] { pe, pu, pj });
+
+        Check("currency of a project comes from its client, else the base", Money.CurrencyOf(pe) == "EUR" && Money.CurrencyOf(pu) == "USD" && Money.CurrencyOf(null) == "USD");
+        Check("conversion uses the rate table, base is 1:1, unknown is null", Money.ToBase(100m, "EUR") == 110m && Money.ToBase(100m, "USD") == 100m && Money.Rate("JPY") == null && Money.Rate("usd") == 1m);
+        var (rates, bad) = Money.ParseRates("EUR = 1.08\n gbp=1.27 \n\nJPY 0.0067\nXX = 2\nCAD = -1\nchf = abc");
+        Check("rate box: reads 'EUR = 1.08' lines, upper-cases codes, reports the bad ones",
+            rates.Count == 3 && rates["EUR"] == 1.08m && rates["GBP"] == 1.27m && rates["JPY"] == 0.0067m && bad.Count == 3, $"{rates.Count} rates, bad: {string.Join(" / ", bad)}");
+        Check("rate box: formats back in a stable order", Money.FormatRates(rates) == "EUR = 1.08" + Environment.NewLine + "GBP = 1.27" + Environment.NewLine + "JPY = 0.0067");
+        Check("cost rate: project's own, else the default", Money.CostRate(pu) == 50m && Money.CostRate(pe) == 30m);
+
+        State.Data.Sessions.Add(S("pe", 2, 100));
+        State.Data.Sessions.Add(S("pu", 1, 80));
+        State.Data.Sessions.Add(S("pu", 1, 80, billable: false));
+        State.Data.Sessions.Add(S("pj", 1, 10000));
+        State.Data.Expenses.Add(new Expense { ProjectId = "pu", Date = State.TodayLocal, Amount = 20m, Billable = false });
+        State.Data.Expenses.Add(new Expense { ProjectId = "pu", Date = State.TodayLocal, Amount = 99m, Billable = true });
+        var r = ReportEngine.Compute(new ReportFilter());
+        var eRow = r.Rows.First(x => x.Key == "pe"); var uRow = r.Rows.First(x => x.Key == "pu");
+        Check("report earnings are converted to the base currency", eRow.Earned == 220m && uRow.Earned == 80m, $"{eRow.Earned}/{uRow.Earned}");
+        Check("cost counts every hour (billable or not) at the cost rate", eRow.Cost == 60m && uRow.Cost == 100m && eRow.Profit == 160m && uRow.Profit == -20m, $"{eRow.Cost}/{uRow.Cost}");
+        Check("profit subtracts non-billable expenses only", r.CostExpenses == 20m && r.Profit == r.Earned - r.Cost - 20m);
+        Check("currencies without a rate are flagged", r.MissingRates.SetEquals(new[] { "JPY" }));
+
+        var inv = new Invoice { Currency = "CAD" };
+        inv.Lines.Add(new InvoiceLine { Description = "Work", Amount = 1000m });
+        inv.DiscountPercent = 10m;
+        inv.Taxes.Add(new TaxLine { Label = "GST", Percent = 5m });
+        inv.Taxes.Add(new TaxLine { Label = "PST", Percent = 7m });
+        InvoiceService.ApplyTotals(inv);
+        Check("several taxes add up on the discounted amount", inv.TaxAmount == 108m && inv.Total == 1008m && inv.TaxPercent == 12m, $"{inv.TaxAmount}/{inv.Total}");
+        inv.ReverseCharge = true; InvoiceService.ApplyTotals(inv);
+        Check("reverse charge: no tax at all", inv.TaxAmount == 0m && inv.Total == 900m);
+        var single = new Invoice { TaxPercent = 8.5m }; single.Lines.Add(new InvoiceLine { Amount = 200m }); InvoiceService.ApplyTotals(single);
+        Check("old single-tax invoices still work", single.TaxAmount == 17m && single.Total == 217m);
+
+        var day = State.TodayLocal;
+        Invoice Issued(string cur, decimal sub, List<TaxLine> taxes, bool rc = false, string status = "Issued", string kind = "Invoice", int daysAgo = 1)
+        {
+            var i = new Invoice { Currency = cur, Status = status, Kind = kind, IssuedUtc = State.ToUtc(day.AddDays(-daysAgo).AddHours(12)), ReverseCharge = rc, Taxes = taxes };
+            i.Lines.Add(new InvoiceLine { Amount = sub }); InvoiceService.ApplyTotals(i); State.Data.Invoices.Add(i); return i;
+        }
+        Issued("CAD", 1000m, new() { new() { Label = "GST", Percent = 5m }, new() { Label = "PST", Percent = 7m } });
+        Issued("CAD", 500m, new() { new() { Label = "GST", Percent = 5m } });
+        Issued("EUR", 800m, new(), rc: true);
+        Issued("CAD", 999m, new() { new() { Label = "GST", Percent = 5m } }, status: "Void");
+        Issued("CAD", 999m, new() { new() { Label = "GST", Percent = 5m } }, kind: "Quote");
+        Issued("CAD", 999m, new() { new() { Label = "GST", Percent = 5m } }, daysAgo: 400);
+        var tax = ReportEngine.TaxReport(day.AddDays(-30), day);
+        var gst = tax.FirstOrDefault(t => t.Label == "GST"); var pst = tax.FirstOrDefault(t => t.Label == "PST"); var rcRow = tax.FirstOrDefault(t => t.Label == "Reverse charge");
+        Check("tax report: totals per tax, skipping void, quotes and other dates",
+            gst != null && gst.Base == 1500m && gst.Tax == 75m && gst.Invoices == 2 && pst != null && pst.Base == 1000m && pst.Tax == 70m && rcRow != null && rcRow.Base == 800m && rcRow.Tax == 0m && rcRow.Currency == "EUR" && tax.Count == 3,
+            string.Join(" | ", tax));
+
+        var due = new Invoice { Number = "INV-9", ClientName = "Austin Co", ClientEmail = "ap@austin.example", Currency = "USD", StudioName = "Sam's Studio", PayLink = "https://pay.example.com/9",
+                                IssuedUtc = new DateTime(2026, 11, 1, 12, 0, 0, DateTimeKind.Utc), DueUtc = new DateTime(2026, 11, 8, 12, 0, 0, DateTimeKind.Utc) };
+        due.Lines.Add(new InvoiceLine { Amount = 500m }); InvoiceService.ApplyTotals(due);
+        due.Payments.Add(new Payment { Amount = 100m });
+        var (to, subj, body) = InvoiceEmail.Compose(due, false, new DateTime(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc));
+        Check("invoice email: addressed to the client with number, balance, due date and pay link",
+            to == "ap@austin.example" && subj.Contains("INV-9") && subj.Contains("Sam's Studio") && body.Contains(Fmt.Money(400m, "USD")) && body.Contains("https://pay.example.com/9") && body.Contains(Fmt.Date(State.ToLocal(due.DueUtc))), (subj + " // " + body + " // want " + Fmt.Money(400m, "USD") + " " + Fmt.Date(State.ToLocal(due.DueUtc))).Replace("\r", "").Replace("\n", " ¶ "));
+        var (_, rs, rb) = InvoiceEmail.Compose(due, true, new DateTime(2026, 11, 18, 12, 0, 0, DateTimeKind.Utc));
+        Check("reminder email says how overdue it is", rs.Contains("INV-9") && rb.Contains("10"), rs + " // " + rb);
     }
 
     // ---------- phase 7: timeline, focus, activity ----------

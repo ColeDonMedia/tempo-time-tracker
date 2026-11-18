@@ -112,6 +112,8 @@ public class ClientsPage : PageBase
         body.Children.Add(Ui.Field("ADDRESS", address));
         body.Children.Add(Two(Ui.Field("DEFAULT RATE", rate), Ui.Field("CURRENCY", cur)));
         body.Children.Add(Two(Ui.Field("PAYMENT TERMS (DAYS)", terms), Ui.Field("DEFAULT TAX %", tax)));
+        var rc = Ui.Check("Reverse charge: business customer in another EU country (invoices carry no VAT)", editing?.ReverseCharge == true);
+        body.Children.Add(rc.WithMargin(0, 0, 0, 14));
         body.Children.Add(Ui.Field("NOTES", notes));
         body.Children.Add(err);
 
@@ -126,7 +128,7 @@ public class ClientsPage : PageBase
 
             var c = editing ?? new Client();
             c.Name = name.Text.Trim(); c.Email = email.Text.Trim(); c.Address = address.Text.Trim(); c.TaxId = taxId.Text.Trim(); c.Notes = notes.Text.Trim();
-            c.DefaultRate = rateV; c.TaxPercent = taxV; c.PaymentTermsDays = termsV;
+            c.DefaultRate = rateV; c.TaxPercent = taxV; c.PaymentTermsDays = termsV; c.ReverseCharge = rc.IsChecked == true;
             c.Currency = (string)cur.SelectedItem == defaultCur ? "" : (string)cur.SelectedItem;
             if (editing == null) d.Clients.Add(c);
             // keep the text copy on each project (and its contact details) in step with the client record
