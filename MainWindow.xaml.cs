@@ -142,6 +142,13 @@ public partial class MainWindow : Window
     DateTime lastSync = DateTime.MinValue;   // first tick syncs straight away
     bool massDeleteWarned;
     DateTime lastCalendar = DateTime.MinValue;
+    DateTime lastStripe = DateTime.MinValue;
+
+    async void CheckStripe()
+    {
+        var changed = await IntegrationClient.CheckStripeAsync();
+        if (changed.Count > 0) IntegrationsUi.AnnounceStripe(changed);
+    }
 
     /// <summary>Downloads subscribed calendars in the background, then refreshes the Day view if it's open.</summary>
     public async void RefreshCalendars(bool force = false)
@@ -329,6 +336,7 @@ public partial class MainWindow : Window
         if (DateTime.UtcNow.Second % 15 == 0) CheckReminders();
         if (FocusMode.Tick() is string focusMsg) Notify(focusMsg);
         if (!string.IsNullOrEmpty(State.Data.Settings.SyncFolder) && (DateTime.UtcNow - lastSync).TotalMinutes >= 2) { lastSync = DateTime.UtcNow; if (SyncService.Run() is { BlockedRemovals: > 0 } blockedRun && !massDeleteWarned) { massDeleteWarned = true; Notify(Loc.F("Another device deleted {0} items. Open Settings → Sync to review before anything is removed here.", blockedRun.BlockedRemovals)); } }
+        if ((DateTime.UtcNow - lastStripe).TotalMinutes >= 15 && SecretStore.Has(State.Dir, IntegrationClient.Stripe)) { lastStripe = DateTime.UtcNow; CheckStripe(); }
         if (State.Data.Settings.CalendarFeeds.Count > 0 && (DateTime.UtcNow - lastCalendar).TotalMinutes >= 30) { lastCalendar = DateTime.UtcNow; RefreshCalendars(); }
         ActivityRecorder.Tick();
         if (State.Running && State.ElapsedMs > 8 * 3600_000L && !longWarned)

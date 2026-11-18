@@ -258,6 +258,8 @@ public static class InvoiceService
         // ---- payment details, pay link + QR, note ----
         y += 14;
         bool hasPay = !quote && !string.IsNullOrWhiteSpace(inv.PayLink);
+        // Stripe payment links carry the invoice number, so Tempo can match the payment back to this invoice
+        var payUrl = StripeSync.WithReference(inv.PayLink ?? "", inv.Number);
         double qrSize = 84;
         if (!string.IsNullOrWhiteSpace(inv.PaymentInstructions) || hasPay)
         {
@@ -274,11 +276,11 @@ public static class InvoiceService
             if (hasPay)
             {
                 page.Text(M, y, Tr("PAY ONLINE"), 8, true, Faint); y += 13;
-                var ll = w.Wrap(inv.PayLink, textW, 10, true);
+                var ll = w.Wrap(payUrl, textW, 10, true);
                 double ly = y;
                 foreach (var ln in ll) { page.Text(M, y, ln, 10, true, Blue); y += 13.5; }
-                page.Link(M, ly, Math.Min(textW, w.Measure(ll[0], 10, true)), Math.Max(13.5, y - ly), inv.PayLink);
-                var qr = QrCode.Encode(inv.PayLink);
+                page.Link(M, ly, Math.Min(textW, w.Measure(ll[0], 10, true)), Math.Max(13.5, y - ly), payUrl);
+                var qr = QrCode.Encode(payUrl);
                 if (qr != null)
                 {
                     int n = qr.GetLength(0);

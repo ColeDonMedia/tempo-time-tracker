@@ -266,6 +266,9 @@ public class SettingsPage : PageBase
         sy.Children.Add(Ui.Text("Each PC writes its own file into the folder and reads the others, every 2 minutes. If the same entry is changed in two places, the newest change wins. Settings, your billing profile and a running timer stay on each PC.", 12, "FaintBrush", wrap: true).WithMargin(0, 6, 0, 0));
         root.Children.Add(Block(sy));
 
+        // ---------- Integrations (bring your own key) ----------
+        root.Children.Add(IntegrationsUi.SettingsCard(Build, Block, Section));
+
         // ---------- Calendar subscriptions ----------
         var cs = new StackPanel();
         cs.Children.Add(Section("Calendar subscriptions", "Show your meetings on the Day tab so you can turn them into entries. Tempo only reads the calendar, every 30 minutes."));

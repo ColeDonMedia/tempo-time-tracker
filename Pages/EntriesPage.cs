@@ -264,7 +264,9 @@ public class EntriesPage : PageBase
 
         var body = new StackPanel();
         body.Children.Add(Ui.Field("PROJECT", pc));
-        body.Children.Add(Ui.Field("DESCRIPTION", task));
+        var descField = Ui.Field("DESCRIPTION", task);
+        if (IntegrationClient.HasAnyTaskSource) { descField.Children.Remove(task); descField.Children.Add(OverviewPage.WithPicker(task)); }   // detach first: a control can only have one parent
+        body.Children.Add(descField);
         body.Children.Add(row); body.Children.Add(row2);
         body.Children.Add(Ui.Field("TAGS (COMMA SEPARATED)", tags));
         body.Children.Add(billable.WithMargin(0, 0, 0, 12));

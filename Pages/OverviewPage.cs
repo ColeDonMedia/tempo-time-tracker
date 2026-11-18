@@ -109,7 +109,7 @@ public class OverviewPage : PageBase
         }
 
         sp.Children.Add(combo);
-        sp.Children.Add(task.WithMargin(0, 10, 0, 14));
+        sp.Children.Add(WithPicker(task).WithMargin(0, 10, 0, 14));
 
         var btns = new Grid();
         btns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -224,6 +224,17 @@ public class OverviewPage : PageBase
         goalText = Ui.Text(Loc.F("{0}h of {1}h weekly goal", hrs.ToString("0.#"), goal.ToString("0.#")), 12.5, "MutedBrush");
         sp.Children.Add(goalText);
         return Ui.Card(sp);
+    }
+
+    /// <summary>The description box, with a "pick a task" button when GitHub, Jira or Asana is connected.</summary>
+    internal static FrameworkElement WithPicker(TextBox box)
+    {
+        if (IntegrationsUi.PickButton(box) is not Button pick) return box;
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition()); g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        pick.Margin = new Thickness(6, 0, 0, 0); Grid.SetColumn(pick, 1);
+        g.Children.Add(box); g.Children.Add(pick);
+        return g;
     }
 
     public override void Tick()

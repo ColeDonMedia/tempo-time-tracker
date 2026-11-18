@@ -80,7 +80,7 @@ public static class InvoiceEmail
             subject = F("Invoice {0} from {1}", inv.Number, from);
             sb.AppendLine(F("Please find attached invoice {0} for {1}, due on {2}.", inv.Number, balance, due));
         }
-        if (!string.IsNullOrWhiteSpace(inv.PayLink)) sb.AppendLine().AppendLine(F("You can pay online here: {0}", inv.PayLink));
+        if (!string.IsNullOrWhiteSpace(inv.PayLink)) sb.AppendLine().AppendLine(F("You can pay online here: {0}", StripeSync.WithReference(inv.PayLink, inv.Number)));
         else if (!string.IsNullOrWhiteSpace(inv.PaymentInstructions)) sb.AppendLine().AppendLine(inv.PaymentInstructions.Trim());
         sb.AppendLine().AppendLine(T("Thank you!")).AppendLine(from);
         return (inv.ClientEmail.Trim(), subject, sb.ToString());

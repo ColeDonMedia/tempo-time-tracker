@@ -36,6 +36,7 @@ public class Payment
     public DateTime DateUtc { get; set; }
     public decimal Amount { get; set; }
     public string Note { get; set; } = "";
+    public string Reference { get; set; } = "";           // e.g. the Stripe checkout session id, so a payment is never recorded twice
 }
 
 /// <summary>Anything deleted waits here (as JSON) until the user empties the list, so deletes can be undone.</summary>

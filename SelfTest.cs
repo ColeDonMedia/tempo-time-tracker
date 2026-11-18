@@ -208,6 +208,70 @@ public static class SelfTest
         MoneyTests();
         SyncTests();
         PolishTests();
+        IntegrationTests();
+    }
+
+    // ---------- phase 11: bring-your-own-key integrations ----------
+    static void IntegrationTests()
+    {
+        // keys: encrypted, separate file, never in the data file
+        var sdir = System.IO.Path.Combine(OutDir, "secrets-test");
+        if (System.IO.Directory.Exists(sdir)) System.IO.Directory.Delete(sdir, true);
+        System.IO.Directory.CreateDirectory(sdir);
+        SecretStore.Set(sdir, "stripe", "rk_test_51AbCdEfSECRET");
+        SecretStore.Set(sdir, "github", "ghp_SECRET123");
+        Check("keys: saved and read back", SecretStore.Get(sdir, "stripe") == "rk_test_51AbCdEfSECRET" && SecretStore.Get(sdir, "github") == "ghp_SECRET123" && SecretStore.Get(sdir, "jira") == null);
+        var raw = System.IO.File.ReadAllBytes(SecretStore.PathIn(sdir));
+        Check("keys: encrypted on disk (no key text in the file)", !System.Text.Encoding.UTF8.GetString(raw).Contains("SECRET") && !System.Text.Encoding.Unicode.GetString(raw).Contains("SECRET"));
+        SecretStore.Set(sdir, "github", null);
+        Check("keys: removing one keeps the others", SecretStore.Get(sdir, "github") == null && SecretStore.Get(sdir, "stripe") == "rk_test_51AbCdEfSECRET");
+        System.IO.File.WriteAllText(SecretStore.PathIn(sdir), "garbage");
+        Check("keys: a damaged file reads as 'no keys', no crash", SecretStore.Get(sdir, "stripe") == null);
+        Check("keys: never part of the data file", !System.Text.Json.JsonSerializer.Serialize(State.Data).Contains("rk_test_"));
+
+        // Stripe payment links
+        Check("stripe: recognises payment links only", StripeSync.IsPaymentLink("https://buy.stripe.com/test_abc123") && !StripeSync.IsPaymentLink("https://pay.example.com/x") && !StripeSync.IsPaymentLink("http://buy.stripe.com/x"));
+        Check("stripe: invoice number becomes a safe reference", StripeSync.ReferenceFor("INV-2026/003 (A)") == "INV-2026-003--A-");
+        Check("stripe: link gets the invoice reference, replacing any old one",
+            StripeSync.WithReference("https://buy.stripe.com/test_abc", "INV-1") == "https://buy.stripe.com/test_abc?client_reference_id=INV-1"
+            && StripeSync.WithReference("https://buy.stripe.com/test_abc?prefilled_email=a%40b.c&client_reference_id=OLD", "INV-2") == "https://buy.stripe.com/test_abc?prefilled_email=a%40b.c&client_reference_id=INV-2"
+            && StripeSync.WithReference("https://pay.example.com/x", "INV-1") == "https://pay.example.com/x");
+        Check("stripe: amounts in cents, and whole units for zero-decimal currencies", StripeSync.FromMinor(123456, "usd") == 1234.56m && StripeSync.FromMinor(5000, "JPY") == 5000m);
+
+        var sessions = "{\"data\":[" +
+            "{\"id\":\"cs_1\",\"client_reference_id\":\"INV-1\",\"amount_total\":50000,\"currency\":\"usd\",\"payment_status\":\"paid\",\"status\":\"complete\",\"created\":1795000000}," +
+            "{\"id\":\"cs_2\",\"client_reference_id\":\"INV-2\",\"amount_total\":10000,\"currency\":\"usd\",\"payment_status\":\"paid\",\"status\":\"complete\",\"created\":1795000100}," +
+            "{\"id\":\"cs_3\",\"client_reference_id\":\"INV-2\",\"amount_total\":99900,\"currency\":\"usd\",\"payment_status\":\"unpaid\",\"status\":\"open\",\"created\":1795000200}," +
+            "{\"id\":\"cs_4\",\"client_reference_id\":null,\"amount_total\":7000,\"currency\":\"usd\",\"payment_status\":\"paid\",\"status\":\"complete\",\"created\":1795000300}," +
+            "{\"id\":\"cs_5\",\"client_reference_id\":\"INV-3\",\"amount_total\":2000,\"currency\":\"eur\",\"payment_status\":\"paid\",\"status\":\"complete\",\"created\":1795000400}]}";
+        var paid = StripeSync.ParseSessions(sessions);
+        Check("stripe: only paid, referenced checkouts count", paid.Count == 3 && paid.All(p => p.Reference.Length > 0) && paid.First(p => p.SessionId == "cs_1").Amount == 500m && paid.First().PaidUtc == DateTimeOffset.FromUnixTimeSeconds(1795000000).UtcDateTime);
+        Check("stripe: broken JSON gives no payments", StripeSync.ParseSessions("{nope").Count == 0);
+
+        Invoice Inv(string n, decimal total, string cur = "USD") { var i = new Invoice { Number = n, Currency = cur, Status = "Issued" }; i.Lines.Add(new InvoiceLine { Amount = total }); InvoiceService.ApplyTotals(i); return i; }
+        var invs = new List<Invoice> { Inv("INV-1", 500m), Inv("INV-2", 300m), Inv("INV-3", 20m, "USD") };
+        var changed = StripeSync.Apply(paid, invs);
+        Check("stripe: full payment marks the invoice paid", invs[0].Status == "Paid" && invs[0].Balance == 0 && invs[0].Payments.Single().Reference == "cs_1" && invs[0].PaidUtc != null);
+        Check("stripe: partial payment is recorded, invoice stays open", invs[1].Status == "Issued" && invs[1].AmountPaid == 100m);
+        Check("stripe: a payment in another currency is not applied", invs[2].Payments.Count == 0);
+        Check("stripe: the same checkout is never recorded twice", StripeSync.Apply(paid, invs).Count == 0 && invs[1].Payments.Count == 1 && changed.Count == 2);
+
+        // your tasks from GitHub / Jira / Asana
+        var gh = "[{\"number\":42,\"title\":\"Fix login on Safari\",\"html_url\":\"https://github.com/acme/web/issues/42\",\"repository\":{\"full_name\":\"acme/web\"}}," +
+                 "{\"number\":7,\"title\":\"Add dark mode\",\"html_url\":\"https://github.com/acme/app/pull/7\",\"pull_request\":{},\"repository\":{\"full_name\":\"acme/app\"}}]";
+        var g = WorkItems.ParseGitHub(gh);
+        Check("github: assigned issues and PRs become tasks", g.Count == 2 && g[0].Key == "acme/web#42" && g[0].Title == "Fix login on Safari" && g[0].Source == "GitHub" && g[0].Container == "acme/web");
+        var jira = "{\"issues\":[{\"key\":\"WEB-12\",\"fields\":{\"summary\":\"Checkout page copy\",\"project\":{\"name\":\"Website\"}}}]}";
+        var j = WorkItems.ParseJira(jira, "https://acme.atlassian.net");
+        Check("jira: issues with key, summary and link", j.Count == 1 && j[0].Key == "WEB-12" && j[0].Url == "https://acme.atlassian.net/browse/WEB-12" && j[0].Container == "Website");
+        var asana = "{\"data\":[{\"gid\":\"120\",\"name\":\"Draft newsletter\",\"permalink_url\":\"https://app.asana.com/0/1/120\",\"projects\":[{\"name\":\"Marketing\"}]}]}";
+        var a = WorkItems.ParseAsana(asana);
+        Check("asana: tasks with project name", a.Count == 1 && a[0].Title == "Draft newsletter" && a[0].Container == "Marketing" && a[0].Source == "Asana");
+        Check("task parsers: junk gives an empty list", WorkItems.ParseGitHub("{}").Count == 0 && WorkItems.ParseJira("[", "https://a.atlassian.net").Count == 0 && WorkItems.ParseAsana("null").Count == 0);
+        Check("jira site: https Atlassian or company sites only, no local network",
+            WorkItems.NormalizeJiraSite("acme.atlassian.net") == "https://acme.atlassian.net" && WorkItems.NormalizeJiraSite("https://jira.acme.com/") == "https://jira.acme.com"
+            && WorkItems.NormalizeJiraSite("http://acme.atlassian.net") == null && WorkItems.NormalizeJiraSite("https://192.168.0.5") == null);
+        Check("task description: key and title", WorkItems.Describe(g[0]) == "acme/web#42 Fix login on Safari" && WorkItems.Describe(j[0]) == "WEB-12 Checkout page copy" && WorkItems.Describe(a[0]) == "Draft newsletter");
     }
 
     // ---------- phase 10: live calendar, one-click update, problem reports ----------
