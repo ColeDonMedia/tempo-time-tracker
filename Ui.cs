@@ -44,6 +44,8 @@ public static class Icons
     public const string Grid = "M4,4 H20 V20 H4 Z M4,12 H20 M12,4 V20";
     public const string Split = "M12,3 V21 M5,8 H9 M15,16 H19";
     public const string Merge = "M5,4 L12,12 L19,4 M12,12 V21";
+    public const string ChevronLeft = "M15,5 L8,12 L15,19";
+    public const string ChevronRight = "M9,5 L16,12 L9,19";
     public const string Archive = "M3,5 H21 V9 H3 Z M5,9 V19 H19 V9 M10,13 H14";
 }
 

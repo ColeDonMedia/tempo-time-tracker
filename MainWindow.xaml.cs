@@ -27,6 +27,7 @@ public partial class MainWindow : Window
         ("Clients", "Clients", Icons.Users),
         ("Entries", "Time entries", Icons.Clock),
         ("Invoices", "Invoices", Icons.Doc),
+        ("Reports", "Reports", Icons.Chart),
         ("Settings", "Settings", Icons.Sliders),
     };
 
@@ -126,6 +127,7 @@ public partial class MainWindow : Window
             "Clients" => new ClientsPage(),
             "Entries" => new EntriesPage(),
             "Invoices" => new InvoicesPage(),
+            "Reports" => new ReportsPage(),
             "Settings" => new SettingsPage(),
             _ => new OverviewPage(),
         };

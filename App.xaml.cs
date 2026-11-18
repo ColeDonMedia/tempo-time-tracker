@@ -105,7 +105,7 @@ public partial class App : Application
     {
         System.IO.Directory.CreateDirectory(dir);
         var prefix = (Loc.Current == "en" ? "" : Loc.Current + "-") + (IsDark ? "dark" : "light");
-        foreach (var (key, name) in new[] { ("Overview", "overview"), ("Projects", "projects"), ("Clients", "clients"), ("Entries", "entries"), ("Invoices", "invoices"), ("Settings", "settings") })
+        foreach (var (key, name) in new[] { ("Overview", "overview"), ("Projects", "projects"), ("Clients", "clients"), ("Entries", "entries"), ("Reports", "reports"), ("Invoices", "invoices"), ("Settings", "settings") })
         {
             win.Navigate(key);
             await Task.Delay(1200);
@@ -121,6 +121,22 @@ public partial class App : Application
             using var fs = System.IO.File.Create(System.IO.Path.Combine(dir, $"{prefix}-{name}.png"));
             enc.Save(fs);
         }
+        // the Entries page's other two tabs
+        foreach (var (tabName, file) in new[] { ("Timesheet", "timesheet"), ("Expenses", "expenses") })
+        {
+            EntriesPage.SetTab(tabName);
+            win.Navigate("Entries");
+            await Task.Delay(1000);
+            var tr = (FrameworkElement)win.Content; tr.UpdateLayout();
+            var trb = new System.Windows.Media.Imaging.RenderTargetBitmap((int)tr.ActualWidth, (int)tr.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            var tbg = new System.Windows.Media.DrawingVisual();
+            using (var dc = tbg.RenderOpen()) dc.DrawRectangle(win.Background, null, new Rect(0, 0, (int)tr.ActualWidth, (int)tr.ActualHeight));
+            trb.Render(tbg); trb.Render(tr);
+            var tenc = new System.Windows.Media.Imaging.PngBitmapEncoder(); tenc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(trb));
+            using (var tfs = System.IO.File.Create(System.IO.Path.Combine(dir, $"{prefix}-{file}.png"))) tenc.Save(tfs);
+        }
+        EntriesPage.SetTab("Entries");
+
         // dialogs (rendered, not shown)
         Dialogs.CaptureDir = dir;
         void Dlg(string tag, Action show) { Dialogs.CaptureTag = (Loc.Current == "en" ? "" : Loc.Current + "-") + tag; try { show(); } catch { } }

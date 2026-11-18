@@ -15,13 +15,30 @@ public class EntriesPage : PageBase
     string billableFilter = "All";   // All | Billable | Non-billable
     int limit = 120;
 
+    public static void SetTab(string t) => tab = t;
+    static string tab = "Entries";   // Entries | Timesheet | Expenses (remembered while Tempo is open)
+    static readonly string[] Tabs = { "Entries", "Timesheet", "Expenses" };
+
+    UIElement TabStrip() => Ui.Tabs(Tabs, Array.IndexOf(Tabs, tab), i => { tab = Tabs[i]; Build(); });
+
     public override void Build()
+    {
+        Content = tab switch
+        {
+            "Timesheet" => TimesheetView.Build(TabStrip, Build),
+            "Expenses" => ExpensesView.Build(TabStrip, Build),
+            _ => BuildEntries(),
+        };
+    }
+
+    StackPanel BuildEntries()
     {
         var d = State.Data;
         var root = new StackPanel();
         root.Children.Add(Ui.Header("Time entries", "Completed sessions, with the rate saved when each one ended.",
             Ui.Btn("Add entry", () => EditEntry(null), "GlassButton", Icons.Plus),
             Ui.Btn("Export CSV", ExportCsv, "GlassButton", Icons.Download)));
+        root.Children.Add(TabStrip());
 
         // ---- filters ----
         var projects = new List<Project> { new() { Id = "", Name = Loc.T("All projects") } };
@@ -45,7 +62,7 @@ public class EntriesPage : PageBase
 
         root.Children.Add(Ui.Card(list, 14));
         Refill();
-        Content = root;
+        return root;
     }
 
     IEnumerable<Session> Filtered()
@@ -215,7 +232,7 @@ public class EntriesPage : PageBase
 
     static string FormatDuration(long ms) { var m = (long)Math.Round(ms / 60000.0); return $"{m / 60}:{m % 60:00}"; }
 
-    static bool TryDuration(string s, out long ms)
+    internal static bool TryDuration(string s, out long ms)
     {
         ms = 0; s = s.Trim();
         if (s.Contains(':'))

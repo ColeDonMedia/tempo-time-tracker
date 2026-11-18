@@ -47,6 +47,9 @@ public static class DemoData
             InvoiceService.ApplyTotals(inv);
             d.Invoices.Add(inv);
         }
+        d.Expenses.Add(new Expense { ProjectId = "p1", Date = today.AddDays(-4), Description = "Stock photo licence", Amount = 49m });
+        d.Expenses.Add(new Expense { ProjectId = "p4", Date = today.AddDays(-2), Description = "Printing: proof set", Amount = 86.50m });
+        foreach (var s in d.Sessions.Where(x => x.Task == "Client call")) s.Billable = false;
         State.Normalize();
         d.InvoiceCounter = 3;
         d.InvoiceNumber = State.NextInvoiceNumber();

@@ -94,5 +94,47 @@ public static class SelfTest
         Check("balance = total + late fee - payments", i2.Balance == 70m, i2.Balance.ToString());
         i2.Status = "Void";
         Check("void invoices owe nothing", i2.Balance == 0m);
+
+        // ---------- reports ----------
+        State.Data = new Workspace();
+        State.Data.Clients.Add(new Client { Id = "c1", Name = "Acme" });
+        State.Data.Clients.Add(new Client { Id = "c2", Name = "Beta" });
+        State.Data.Projects.Add(new Project { Id = "p1", Name = "Logo", ClientId = "c1", Client = "Acme", HourlyRate = 100 });
+        State.Data.Projects.Add(new Project { Id = "p2", Name = "Site", ClientId = "c2", Client = "Beta", HourlyRate = 50 });
+        var s1 = S("p1", 2, 100, true, 1); s1.Tags = new() { "design", "meeting" }; s1.Task = "Concepts";
+        var s2 = S("p1", 1, 100, false, 1); s2.Task = "Concepts";
+        var s3 = S("p2", 4, 50, true, 40); s3.Task = "Build";
+        State.Data.Sessions.AddRange(new[] { s1, s2, s3 });
+        State.Data.Expenses.Add(new Expense { ProjectId = "p1", Date = State.TodayLocal.AddDays(-1), Amount = 30m });
+        State.Data.Expenses.Add(new Expense { ProjectId = "p2", Date = State.TodayLocal.AddDays(-40), Amount = 99m });
+
+        var all = ReportEngine.Compute(new ReportFilter { GroupBy = "Project" });
+        Check("report totals: 7h tracked, 6h billable, 400 earned", all.TotalHours == 7m && all.BillableHours == 6m && all.Earned == 400m, $"{all.TotalHours}/{all.BillableHours}/{all.Earned}");
+        Check("report groups by project, biggest first", all.Rows.Count == 2 && all.Rows[0].Label == "Site" && all.Rows[0].Hours == 4m);
+        var by30 = ReportEngine.Compute(new ReportFilter { From = State.TodayLocal.AddDays(-29), To = State.TodayLocal });
+        Check("date range excludes older time and expenses", by30.TotalHours == 3m && by30.Expenses == 30m, $"{by30.TotalHours}/{by30.Expenses}");
+        var nb = ReportEngine.Compute(new ReportFilter { Billable = "Non-billable" });
+        Check("non-billable filter", nb.TotalHours == 1m && nb.Earned == 0m);
+        var cl = ReportEngine.Compute(new ReportFilter { ClientId = "c2" });
+        Check("client filter", cl.TotalHours == 4m && cl.Rows.Count == 1);
+        var tg = ReportEngine.Compute(new ReportFilter { GroupBy = "Tag" });
+        Check("tag grouping counts a multi-tag entry under each tag", tg.Rows.Any(r => r.Label == "design" && r.Hours == 2m) && tg.Rows.Any(r => r.Label == "meeting" && r.Hours == 2m));
+        var dy = ReportEngine.Compute(new ReportFilter { GroupBy = "Day" });
+        Check("day grouping is oldest first", dy.Rows.Count == 2 && string.CompareOrdinal(dy.Rows[0].Key, dy.Rows[1].Key) < 0);
+        var csv = ReportEngine.Csv(all, new ReportFilter());
+        Check("report CSV has a header, rows and a total", csv.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries).Length == 4);
+
+        // ---------- timesheet grid ----------
+        var proj = State.Data.Projects[1];
+        var day = State.TodayLocal.AddDays(-3);
+        Check("typing hours into an empty cell creates a timesheet entry", TimesheetView.CommitCell(proj, day, "2.5")
+              && State.Data.Sessions.Any(x => x.Source == "grid" && x.ProjectId == "p2" && x.DurationMilliseconds == 9_000_000));
+        Check("editing the cell updates it instead of adding another", TimesheetView.CommitCell(proj, day, "3") && State.Data.Sessions.Count(x => x.Source == "grid") == 1
+              && State.Data.Sessions.First(x => x.Source == "grid").DurationMilliseconds == 10_800_000);
+        Check("clearing the cell removes the timesheet entry", TimesheetView.CommitCell(proj, day, "") && State.Data.Sessions.All(x => x.Source != "grid"));
+        var real = S("p2", 2, 50, true, 3); real.StartedAtUtc = State.ToUtc(day.AddHours(10)); real.EndedAtUtc = real.StartedAtUtc.AddHours(2);
+        State.Data.Sessions.Add(real);
+        Check("a cell can't go below time already tracked that day", !TimesheetView.CommitCell(proj, day, "1"));
+        Check("a cell above tracked time adds the difference", TimesheetView.CommitCell(proj, day, "3.5") && State.Data.Sessions.First(x => x.Source == "grid").DurationMilliseconds == 5_400_000);
     }
 }
