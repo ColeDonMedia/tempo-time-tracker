@@ -75,6 +75,10 @@ public static class StripeSync
 {
     static readonly HashSet<string> ZeroDecimal = new(StringComparer.OrdinalIgnoreCase)
         { "BIF", "CLP", "DJF", "GNF", "JPY", "KMF", "KRW", "MGA", "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF" };
+    static readonly HashSet<string> ThreeDecimal = new(StringComparer.OrdinalIgnoreCase) { "BHD", "JOD", "KWD", "OMR", "TND" };
+
+    /// <summary>Every reference Tempo puts on a link starts with this, so checkouts from a website or another tool never match an invoice.</summary>
+    public const string Prefix = "tempo_";
 
     public static bool IsPaymentLink(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps && u.Host.Equals("buy.stripe.com", StringComparison.OrdinalIgnoreCase);
@@ -82,7 +86,7 @@ public static class StripeSync
     /// <summary>Stripe allows letters, digits, '-' and '_' (max 200) in client_reference_id.</summary>
     public static string ReferenceFor(string invoiceNumber)
     {
-        var s = new string(invoiceNumber.Trim().Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '-').ToArray());
+        var s = Prefix + new string(invoiceNumber.Trim().Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '-').ToArray());
         return s.Length > 200 ? s[..200] : s;
     }
 
@@ -97,7 +101,7 @@ public static class StripeSync
         return path + "?" + string.Join("&", parts);
     }
 
-    public static decimal FromMinor(long amount, string currency) => ZeroDecimal.Contains(currency) ? amount : amount / 100m;
+    public static decimal FromMinor(long amount, string currency) => ZeroDecimal.Contains(currency) ? amount : ThreeDecimal.Contains(currency) ? amount / 1000m : amount / 100m;
 
     /// <summary>Completed, paid checkouts that carry a reference (from GET /v1/checkout/sessions).</summary>
     public static List<StripePayment> ParseSessions(string json)
@@ -112,7 +116,9 @@ public static class StripeSync
                 string Str(string p) => s.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
                 if (Str("payment_status") != "paid" || Str("status") != "complete") continue;
                 var reference = Str("client_reference_id");
-                if (reference.Length == 0 || !s.TryGetProperty("amount_total", out var at) || at.ValueKind != JsonValueKind.Number) continue;
+                // only Tempo's own references, and only checkouts that came through a payment link
+                if (!reference.StartsWith(Prefix, StringComparison.Ordinal) || Str("payment_link").Length == 0) continue;
+                if (!s.TryGetProperty("amount_total", out var at) || at.ValueKind != JsonValueKind.Number) continue;
                 var cur = Str("currency").ToUpperInvariant();
                 var created = s.TryGetProperty("created", out var c) && c.TryGetInt64(out var secs) ? DateTimeOffset.FromUnixTimeSeconds(secs).UtcDateTime : DateTime.UtcNow;
                 list.Add(new StripePayment(Str("id"), reference, FromMinor(at.GetInt64(), cur), cur, created));
@@ -125,11 +131,14 @@ public static class StripeSync
     public static List<Invoice> Apply(IEnumerable<StripePayment> payments, List<Invoice> invoices)
     {
         var changed = new List<Invoice>();
+        // only open invoices that actually use a Stripe link; a reference shared by two invoices is ambiguous, so neither is touched
+        var candidates = invoices.Where(i => i.Kind == "Invoice" && i.Status == "Issued" && IsPaymentLink(i.PayLink ?? "")).GroupBy(i => ReferenceFor(i.Number))
+                                 .Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First());
         foreach (var p in payments)
         {
             if (p.Amount <= 0 || p.SessionId.Length == 0) continue;
-            var inv = invoices.FirstOrDefault(i => i.Kind == "Invoice" && i.Status != "Void" && ReferenceFor(i.Number) == p.Reference);
-            if (inv == null || !inv.Currency.Equals(p.Currency, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!candidates.TryGetValue(p.Reference, out var inv) || !inv.Currency.Equals(p.Currency, StringComparison.OrdinalIgnoreCase)) continue;
+            if (p.PaidUtc < inv.IssuedUtc.AddDays(-1)) continue;   // paid before this invoice existed: not for it
             if (inv.Payments.Any(x => x.Reference == p.SessionId)) continue;
             inv.Payments.Add(new Payment { Amount = p.Amount, DateUtc = p.PaidUtc, Note = "Stripe", Reference = p.SessionId });
             if (inv.Balance <= 0) { inv.Status = "Paid"; inv.PaidUtc = p.PaidUtc; }
@@ -146,6 +155,14 @@ public static class WorkItems
 {
     static string S(JsonElement e, string p) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
+    /// <summary>Titles are written by other people: one line, no control characters, at most 300 characters.</summary>
+    static string Clean(string s)
+    {
+        var one = new string(s.Select(c => char.IsControl(c) ? ' ' : c).ToArray()).Trim();
+        while (one.Contains("  ")) one = one.Replace("  ", " ");
+        return one.Length > 300 ? one[..300] : one;
+    }
+
     public static List<WorkItem> ParseGitHub(string json)
     {
         var list = new List<WorkItem>();
@@ -157,7 +174,7 @@ public static class WorkItems
             {
                 var repo = i.TryGetProperty("repository", out var r) ? S(r, "full_name") : "";
                 var num = i.TryGetProperty("number", out var n) && n.TryGetInt32(out var nv) ? nv : 0;
-                var title = S(i, "title");
+                var title = Clean(S(i, "title"));
                 if (title.Length == 0) continue;
                 list.Add(new WorkItem("GitHub", repo.Length > 0 ? $"{repo}#{num}" : $"#{num}", title, S(i, "html_url"), repo));
             }
@@ -177,7 +194,7 @@ public static class WorkItems
             {
                 var key = S(i, "key");
                 var f = i.TryGetProperty("fields", out var fv) ? fv : default;
-                var summary = S(f, "summary");
+                var summary = Clean(S(f, "summary"));
                 var project = f.ValueKind == JsonValueKind.Object && f.TryGetProperty("project", out var p) ? S(p, "name") : "";
                 if (key.Length == 0) continue;
                 list.Add(new WorkItem("Jira", key, summary, $"{site.TrimEnd('/')}/browse/{Uri.EscapeDataString(key)}", project));
@@ -196,7 +213,7 @@ public static class WorkItems
             if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array) return list;
             foreach (var t in data.EnumerateArray())
             {
-                var name = S(t, "name");
+                var name = Clean(S(t, "name"));
                 if (name.Length == 0) continue;
                 var project = t.TryGetProperty("projects", out var ps) && ps.ValueKind == JsonValueKind.Array && ps.GetArrayLength() > 0 ? S(ps[0], "name") : "";
                 list.Add(new WorkItem("Asana", S(t, "gid"), name, S(t, "permalink_url"), project));

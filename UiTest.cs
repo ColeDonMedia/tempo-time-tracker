@@ -105,6 +105,7 @@ public static class UiTest
 
             // with a (fake) GitHub token saved: the task picker button appears and the Settings card shows "Connected".
             // Nothing is fetched: the picker only calls GitHub when it's clicked.
+            var realKey = SecretStore.Get(State.Dir, IntegrationClient.GitHub);   // put back whatever was there before
             SecretStore.Set(State.Dir, IntegrationClient.GitHub, "test-token-not-real");
             foreach (var key in new[] { "Overview", "Settings" })
             {
@@ -120,7 +121,7 @@ public static class UiTest
             Dialogs.CaptureDir = System.IO.Path.GetDirectoryName(path);
             Dlg("entry-with-picker", () => EntriesPage.EditEntry(null));
             Dialogs.CaptureDir = null;
-            SecretStore.Set(State.Dir, IntegrationClient.GitHub, null);
+            SecretStore.Set(State.Dir, IntegrationClient.GitHub, realKey);
 
             // command palette opens, filters and closes
             win.Navigate("Overview");

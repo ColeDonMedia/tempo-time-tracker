@@ -42,7 +42,7 @@ public static class CalendarFeeds
     public static async Task RefreshAsync(string dir, IEnumerable<CalendarFeed> feeds, bool force = false)
     {
         // no redirects: a feed must not bounce us to an address we'd have refused
-        using var handler = new System.Net.Http.HttpClientHandler { AllowAutoRedirect = false };
+        using var handler = SafeHttp.Handler();
         using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20), MaxResponseContentBufferSize = MaxBytes };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Tempo-calendar");
         foreach (var f in feeds.ToList())

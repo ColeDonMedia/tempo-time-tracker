@@ -67,6 +67,12 @@ Invoices are written by Tempo's own PDF engine, with embedded fonts, so accents 
 - **Taxes**: a second tax line (for example GST + PST), **EU reverse charge** with the required wording and the customer's VAT ID, and a **tax report** per tax and currency, exportable to CSV.
 - **Email from Tempo**: opens a ready-to-send email in your mail app with the PDF attached, in the invoice's language. You always press Send yourself. Overdue invoices get a **payment reminder** button.
 
+**Integrations (bring your own key)**
+
+Each user connects their own accounts in *Settings → Integrations*. Keys are encrypted with Windows' per-user protection (DPAPI) and kept in their own file, so they are never in backups, sync files or problem reports.
+- **Stripe**: use a Stripe payment link as an invoice's pay link. Tempo adds the invoice number to the link, checks your completed payments every 15 minutes, and records the payment (marking the invoice *Paid* when it's covered). It only needs a **restricted key** with *Checkout Sessions: Read*.
+- **GitHub, Jira, Asana**: a *Pick a task* button next to the description fills it with an issue or task assigned to you. It uses a read-only personal access token (GitHub), an API token (Jira) or a personal access token (Asana).
+
 **Sync and teams (no server, no account)**
 - Pick a folder you already sync (OneDrive, Dropbox, Google Drive, a network share). Each PC or teammate writes its own file there every 2 minutes and reads the others'.
 - The newest edit wins, and deletions travel. Anything removed by sync lands in *Recently deleted*, and a large batch of deletions from another device waits for you to confirm it.
@@ -114,6 +120,7 @@ Your data is stored locally in `%LOCALAPPDATA%\TempoStudio\tempo-data.json`. Tem
 - **Update check:** asks GitHub for the latest version number.
 - **Calendar subscriptions:** reads the calendars you add, every 30 minutes.
 - **Installing an update:** only when you click Install.
+- **Integrations you connect:** Stripe, GitHub, Jira or Asana, each using your own key.
 
 Activity tracking and sync never use the internet. Sync only reads and writes files in the folder you choose.
 

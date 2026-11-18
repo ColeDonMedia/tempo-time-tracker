@@ -8,6 +8,27 @@ namespace Tempo;
 /// Talks to Stripe, GitHub, Jira and Asana with the user's own keys. Only fixed API hosts (or the user's own Jira site) are
 /// contacted, responses are size-capped, redirects are not followed, and keys are never logged or shown again.
 /// </summary>
+/// <summary>
+/// HTTP for addresses the user typed (Jira site, calendar feeds): no redirects, and the connection is refused if the name
+/// resolves to this PC or the local network, so a public-looking name can't point Tempo at a router or intranet service.
+/// </summary>
+public static class SafeHttp
+{
+    public static SocketsHttpHandler Handler() => new()
+    {
+        AllowAutoRedirect = false,
+        ConnectCallback = async (ctx, ct) =>
+        {
+            var addrs = await System.Net.Dns.GetHostAddressesAsync(ctx.DnsEndPoint.Host, ct);
+            var ok = addrs.Where(a => !CalendarFeeds.IsPrivate(a)).ToArray();
+            if (ok.Length == 0) throw new HttpRequestException("Refused: that address is on the local network.");
+            var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp) { NoDelay = true };
+            try { await socket.ConnectAsync(ok, ctx.DnsEndPoint.Port, ct); return new System.Net.Sockets.NetworkStream(socket, true); }
+            catch { socket.Dispose(); throw; }
+        },
+    };
+}
+
 public static class IntegrationClient
 {
     public const string Stripe = "stripe", GitHub = "github", Jira = "jira", JiraEmail = "jira-email", JiraSite = "jira-site", Asana = "asana";
@@ -15,7 +36,7 @@ public static class IntegrationClient
 
     static HttpClient Client()
     {
-        var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(20), MaxResponseContentBufferSize = 5_000_000 };
+        var http = new HttpClient(SafeHttp.Handler()) { Timeout = TimeSpan.FromSeconds(20), MaxResponseContentBufferSize = 5_000_000 };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Tempo-time-tracker");
         return http;
     }
@@ -126,7 +147,8 @@ public static class IntegrationClient
         using var http = Client();
         var payments = new List<StripePayment>();
         string? after = null;
-        for (int page = 0; page < 5; page++)
+        bool more = false;
+        for (int page = 0; page < 10; page++)
         {
             var url = $"https://api.stripe.com/v1/checkout/sessions?status=complete&limit=100&created[gte]={since}" + (after != null ? "&starting_after=" + Uri.EscapeDataString(after) : "");
             var (b, e) = await Get(http, url, Bearer(sk));
@@ -136,12 +158,14 @@ public static class IntegrationClient
             {
                 using var doc = System.Text.Json.JsonDocument.Parse(b);
                 var data = doc.RootElement.GetProperty("data");
-                if (!doc.RootElement.TryGetProperty("has_more", out var more) || !more.GetBoolean() || data.GetArrayLength() == 0) break;
+                more = doc.RootElement.TryGetProperty("has_more", out var hm) && hm.GetBoolean() && data.GetArrayLength() > 0;
+                if (!more) break;
                 after = data[data.GetArrayLength() - 1].GetProperty("id").GetString();
             }
-            catch { break; }
+            catch { more = false; break; }
         }
-        LastStripeError = null;
+        // a very busy Stripe account: say so instead of silently missing older payments
+        LastStripeError = more ? Loc.T("Your Stripe account has more than 1,000 payments since the oldest open invoice; older ones weren't checked. Record those by hand.") : null;
         var changed = StripeSync.Apply(payments, State.Data.Invoices);
         if (changed.Count > 0) State.Notify();
         return changed;

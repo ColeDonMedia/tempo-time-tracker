@@ -231,30 +231,50 @@ public static class SelfTest
 
         // Stripe payment links
         Check("stripe: recognises payment links only", StripeSync.IsPaymentLink("https://buy.stripe.com/test_abc123") && !StripeSync.IsPaymentLink("https://pay.example.com/x") && !StripeSync.IsPaymentLink("http://buy.stripe.com/x"));
-        Check("stripe: invoice number becomes a safe reference", StripeSync.ReferenceFor("INV-2026/003 (A)") == "INV-2026-003--A-");
+        Check("stripe: invoice number becomes a safe, Tempo-only reference", StripeSync.ReferenceFor("INV-2026/003 (A)") == "tempo_INV-2026-003--A-");
         Check("stripe: link gets the invoice reference, replacing any old one",
-            StripeSync.WithReference("https://buy.stripe.com/test_abc", "INV-1") == "https://buy.stripe.com/test_abc?client_reference_id=INV-1"
-            && StripeSync.WithReference("https://buy.stripe.com/test_abc?prefilled_email=a%40b.c&client_reference_id=OLD", "INV-2") == "https://buy.stripe.com/test_abc?prefilled_email=a%40b.c&client_reference_id=INV-2"
+            StripeSync.WithReference("https://buy.stripe.com/test_abc", "INV-1") == "https://buy.stripe.com/test_abc?client_reference_id=tempo_INV-1"
+            && StripeSync.WithReference("https://buy.stripe.com/test_abc?prefilled_email=a%40b.c&client_reference_id=OLD", "INV-2") == "https://buy.stripe.com/test_abc?prefilled_email=a%40b.c&client_reference_id=tempo_INV-2"
             && StripeSync.WithReference("https://pay.example.com/x", "INV-1") == "https://pay.example.com/x");
-        Check("stripe: amounts in cents, and whole units for zero-decimal currencies", StripeSync.FromMinor(123456, "usd") == 1234.56m && StripeSync.FromMinor(5000, "JPY") == 5000m);
+        Check("stripe: amounts in cents, whole units for zero-decimal and thousandths for three-decimal currencies",
+            StripeSync.FromMinor(123456, "usd") == 1234.56m && StripeSync.FromMinor(5000, "JPY") == 5000m && StripeSync.FromMinor(1000, "KWD") == 1.000m && StripeSync.FromMinor(2500, "bhd") == 2.5m);
 
-        var sessions = "{\"data\":[" +
-            "{\"id\":\"cs_1\",\"client_reference_id\":\"INV-1\",\"amount_total\":50000,\"currency\":\"usd\",\"payment_status\":\"paid\",\"status\":\"complete\",\"created\":1795000000}," +
-            "{\"id\":\"cs_2\",\"client_reference_id\":\"INV-2\",\"amount_total\":10000,\"currency\":\"usd\",\"payment_status\":\"paid\",\"status\":\"complete\",\"created\":1795000100}," +
-            "{\"id\":\"cs_3\",\"client_reference_id\":\"INV-2\",\"amount_total\":99900,\"currency\":\"usd\",\"payment_status\":\"unpaid\",\"status\":\"open\",\"created\":1795000200}," +
-            "{\"id\":\"cs_4\",\"client_reference_id\":null,\"amount_total\":7000,\"currency\":\"usd\",\"payment_status\":\"paid\",\"status\":\"complete\",\"created\":1795000300}," +
-            "{\"id\":\"cs_5\",\"client_reference_id\":\"INV-3\",\"amount_total\":2000,\"currency\":\"eur\",\"payment_status\":\"paid\",\"status\":\"complete\",\"created\":1795000400}]}";
+        var t0s = new DateTimeOffset(2026, 11, 10, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+        string Sess(string id, string? reference, long amount, string cur, bool paidOk = true, bool link = true, long at = 0) =>
+            $"{{\"id\":\"{id}\",\"client_reference_id\":{(reference == null ? "null" : "\"" + reference + "\"")},\"amount_total\":{amount},\"currency\":\"{cur}\",\"payment_status\":\"{(paidOk ? "paid" : "unpaid")}\",\"status\":\"{(paidOk ? "complete" : "open")}\",\"payment_link\":{(link ? "\"plink_1\"" : "null")},\"created\":{(at == 0 ? t0s : at)}}}";
+        var sessions = "{\"data\":[" + string.Join(",",
+            Sess("cs_1", "tempo_INV-1", 50000, "usd"),
+            Sess("cs_2", "tempo_INV-2", 10000, "usd"),
+            Sess("cs_3", "tempo_INV-2", 99900, "usd", paidOk: false),
+            Sess("cs_4", null, 7000, "usd"),
+            Sess("cs_5", "tempo_INV-3", 2000, "eur"),
+            Sess("cs_6", "INV-1", 50000, "usd"),                      // someone else's checkout using a bare number
+            Sess("cs_7", "tempo_INV-2", 5000, "usd", link: false),    // not from a payment link (e.g. a website checkout)
+            Sess("cs_8", "tempo_INV-2", 5000, "usd", at: t0s - 30 * 86400)) + "]}";   // paid long before the invoice existed
         var paid = StripeSync.ParseSessions(sessions);
-        Check("stripe: only paid, referenced checkouts count", paid.Count == 3 && paid.All(p => p.Reference.Length > 0) && paid.First(p => p.SessionId == "cs_1").Amount == 500m && paid.First().PaidUtc == DateTimeOffset.FromUnixTimeSeconds(1795000000).UtcDateTime);
+        Check("stripe: only paid payment-link checkouts with a Tempo reference count", paid.Select(p => p.SessionId).OrderBy(x => x).SequenceEqual(new[] { "cs_1", "cs_2", "cs_5", "cs_8" }) && paid.First(p => p.SessionId == "cs_1").Amount == 500m && paid.First().PaidUtc == DateTimeOffset.FromUnixTimeSeconds(t0s).UtcDateTime, string.Join(",", paid.Select(p => p.SessionId)));
         Check("stripe: broken JSON gives no payments", StripeSync.ParseSessions("{nope").Count == 0);
 
-        Invoice Inv(string n, decimal total, string cur = "USD") { var i = new Invoice { Number = n, Currency = cur, Status = "Issued" }; i.Lines.Add(new InvoiceLine { Amount = total }); InvoiceService.ApplyTotals(i); return i; }
+        var issued = DateTimeOffset.FromUnixTimeSeconds(t0s).UtcDateTime.AddDays(-2);
+        Invoice Inv(string n, decimal total, string cur = "USD") { var i = new Invoice { Number = n, Currency = cur, Status = "Issued", IssuedUtc = issued, PayLink = "https://buy.stripe.com/test_abc" }; i.Lines.Add(new InvoiceLine { Amount = total }); InvoiceService.ApplyTotals(i); return i; }
         var invs = new List<Invoice> { Inv("INV-1", 500m), Inv("INV-2", 300m), Inv("INV-3", 20m, "USD") };
         var changed = StripeSync.Apply(paid, invs);
         Check("stripe: full payment marks the invoice paid", invs[0].Status == "Paid" && invs[0].Balance == 0 && invs[0].Payments.Single().Reference == "cs_1" && invs[0].PaidUtc != null);
         Check("stripe: partial payment is recorded, invoice stays open", invs[1].Status == "Issued" && invs[1].AmountPaid == 100m);
         Check("stripe: a payment in another currency is not applied", invs[2].Payments.Count == 0);
         Check("stripe: the same checkout is never recorded twice", StripeSync.Apply(paid, invs).Count == 0 && invs[1].Payments.Count == 1 && changed.Count == 2);
+        Check("stripe: payments from before the invoice was issued are ignored", invs[1].Payments.All(p => p.Reference != "cs_8"));
+        var twins = new List<Invoice> { Inv("INV/9", 50m), Inv("INV-9", 50m) };
+        var twinPay = new[] { new StripePayment("cs_9", "tempo_INV-9", 50m, "USD", issued.AddDays(1)) };
+        Check("stripe: when two invoices share a reference, neither is touched", StripeSync.Apply(twinPay, twins).Count == 0 && twins.All(i => i.Payments.Count == 0));
+        var draft = new List<Invoice> { Inv("INV-5", 50m) }; draft[0].Status = "Paid";
+        var noLink = new List<Invoice> { Inv("INV-6", 50m) }; noLink[0].PayLink = "https://pay.example.com/6";
+        Check("stripe: only open invoices that use a Stripe link are matched",
+            StripeSync.Apply(new[] { new StripePayment("cs_10", "tempo_INV-5", 50m, "USD", issued.AddDays(1)) }, draft).Count == 0
+            && StripeSync.Apply(new[] { new StripePayment("cs_11", "tempo_INV-6", 50m, "USD", issued.AddDays(1)) }, noLink).Count == 0);
+        var longTitle = "[{\"number\":1,\"title\":\"=HYPERLINK(\\\"x\\\")\\nline2\\u0007" + new string('a', 1000) + "\",\"html_url\":\"https://github.com/a/b/issues/1\",\"repository\":{\"full_name\":\"a/b\"}}]";
+        var cleaned = WorkItems.ParseGitHub(longTitle).Single().Title;
+        Check("tasks: titles from other people are cleaned and shortened", cleaned.Length <= 300 && !cleaned.Contains('\n') && !cleaned.Contains('\a'), cleaned.Length.ToString());
 
         // your tasks from GitHub / Jira / Asana
         var gh = "[{\"number\":42,\"title\":\"Fix login on Safari\",\"html_url\":\"https://github.com/acme/web/issues/42\",\"repository\":{\"full_name\":\"acme/web\"}}," +

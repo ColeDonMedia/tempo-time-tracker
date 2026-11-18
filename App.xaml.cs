@@ -174,12 +174,13 @@ public partial class App : Application
         win.Scroller.ScrollToVerticalOffset(2350);
         await Snap("settings-lower");
         // integrations card in its connected state (fake key in the scratch data folder; nothing is contacted)
+        var realKey = SecretStore.Get(State.Dir, IntegrationClient.GitHub);   // restored right after
         SecretStore.Set(State.Dir, IntegrationClient.GitHub, "screenshot-not-a-real-token");
         win.Navigate("Settings");
         await Task.Delay(600);
         win.Scroller.ScrollToVerticalOffset(3150);
         await Snap("settings-integrations");
-        SecretStore.Set(State.Dir, IntegrationClient.GitHub, null);
+        SecretStore.Set(State.Dir, IntegrationClient.GitHub, realKey);
         // command palette
         win.Navigate("Overview");
         CommandPalette.Open();
