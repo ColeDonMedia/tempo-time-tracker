@@ -12,6 +12,7 @@ public class EntriesPage : PageBase
     string? projectFilter;       // null = all
     string status = "All";       // All | Unbilled | Invoiced
     string search = "";
+    string billableFilter = "All";   // All | Billable | Non-billable
     int limit = 120;
 
     public override void Build()
@@ -28,16 +29,18 @@ public class EntriesPage : PageBase
         var pc = Ui.Combo(projects, projects.FirstOrDefault(p => p.Id == (projectFilter ?? "")), "Name");
         pc.MinWidth = 220;
         var sc = Ui.Combo(new[] { "All", "Unbilled", "Invoiced" }, status); sc.MinWidth = 140;
+        var bc = Ui.Combo(new[] { "All", "Billable", "Non-billable" }, billableFilter); bc.MinWidth = 150;
         var tb = Ui.Input(search, "Search descriptions…"); tb.MinWidth = 240;
         var list = new StackPanel();
         void Refill() { FillList(list); }
         pc.SelectionChanged += (_, _) => { projectFilter = (pc.SelectedItem as Project)?.Id is { Length: > 0 } id ? id : null; limit = 120; Refill(); };
         sc.SelectionChanged += (_, _) => { status = (string)sc.SelectedItem; limit = 120; Refill(); };
+        bc.SelectionChanged += (_, _) => { billableFilter = (string)bc.SelectedItem; limit = 120; Refill(); };
         tb.TextChanged += (_, _) => { search = tb.Text; limit = 120; Refill(); };
 
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 16) };
-        pc.Margin = new Thickness(0, 0, 10, 0); sc.Margin = new Thickness(0, 0, 10, 0);
-        bar.Children.Add(pc); bar.Children.Add(sc); bar.Children.Add(tb);
+        pc.Margin = new Thickness(0, 0, 10, 0); sc.Margin = new Thickness(0, 0, 10, 0); bc.Margin = new Thickness(0, 0, 10, 0);
+        bar.Children.Add(pc); bar.Children.Add(sc); bar.Children.Add(bc); bar.Children.Add(tb);
         root.Children.Add(bar);
 
         root.Children.Add(Ui.Card(list, 14));
@@ -51,8 +54,10 @@ public class EntriesPage : PageBase
         if (projectFilter != null) q = q.Where(s => s.ProjectId == projectFilter);
         if (status == "Unbilled") q = q.Where(s => s.InvoiceId == null);
         if (status == "Invoiced") q = q.Where(s => s.InvoiceId != null);
+        if (billableFilter == "Billable") q = q.Where(s => s.Billable);
+        if (billableFilter == "Non-billable") q = q.Where(s => !s.Billable);
         if (!string.IsNullOrWhiteSpace(search))
-            q = q.Where(s => (s.Task ?? "").Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+            q = q.Where(s => (s.Task ?? "").Contains(search, StringComparison.CurrentCultureIgnoreCase) || s.Tags.Any(t => t.Contains(search, StringComparison.CurrentCultureIgnoreCase)) ||
                              (State.Proj(s.ProjectId)?.Name ?? "").Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
                              (State.Proj(s.ProjectId)?.Client ?? "").Contains(search, StringComparison.CurrentCultureIgnoreCase));
         return q.OrderByDescending(s => s.StartedAtUtc);
@@ -110,11 +115,18 @@ public class EntriesPage : PageBase
         mid.Children.Add(Ui.Text(string.IsNullOrWhiteSpace(s.Task) ? Loc.T("Work session") : s.Task, 14.5, "TextBrush", FontWeights.SemiBold));
         var sub = $"{(p?.Name ?? Loc.T("Deleted project"))}{(string.IsNullOrWhiteSpace(p?.Client) ? "" : " · " + p!.Client)}  ·  {(actions ? "" : ls.ToString(Loc.ShortMonthDay(), CultureInfo.CurrentCulture) + ", ")}{Fmt.Time(ls)} – {Fmt.Time(le)}";
         mid.Children.Add(Ui.Text(sub, 12.5, "MutedBrush"));
+        if (!s.Billable || s.Tags.Count > 0)
+        {
+            var tp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 5, 0, 0) };
+            if (!s.Billable) tp.Children.Add(Ui.Pill("Non-billable", "WarnBrush", "WarnSoftBrush").WithMargin(0, 0, 6, 0));
+            foreach (var tag in s.Tags.Take(6)) tp.Children.Add(Ui.Pill(tag, "MutedBrush", "FieldBrush").WithMargin(0, 0, 6, 0));
+            mid.Children.Add(tp);
+        }
         Grid.SetColumn(mid, 1); g.Children.Add(mid);
 
         var dur = Ui.Text(Fmt.Hm(s.DurationMilliseconds), 14, "TextBrush", FontWeights.SemiBold); dur.Margin = new Thickness(12, 0, 16, 0); dur.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(dur, 2); g.Children.Add(dur);
-        var amt = Ui.Text(Fmt.Money(State.Earned(s)), 14, "MutedBrush"); amt.MinWidth = 78; amt.TextAlignment = TextAlignment.Right; amt.VerticalAlignment = VerticalAlignment.Center;
+        var amt = Ui.Text(s.Billable ? Fmt.Money(State.Earned(s)) : "—", 14, "MutedBrush"); amt.MinWidth = 78; amt.TextAlignment = TextAlignment.Right; amt.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(amt, 3); g.Children.Add(amt);
 
         if (actions)
@@ -125,11 +137,10 @@ public class EntriesPage : PageBase
             else right.Children.Add(Ui.IconBtn(Icons.Edit, "Edit entry", () => EditEntry(s)));
             right.Children.Add(Ui.IconBtn(Icons.Trash, "Delete entry", () =>
             {
-                var msg = s.InvoiceId == null
-                    ? "Delete this time entry? This can't be undone."
-                    : Loc.F("This entry was billed on {0}. Deleting it won't change that invoice (it keeps its own copy of the lines), but the entry will be gone from your log. This can't be undone.", inv?.Number ?? Loc.T("an invoice"));
-                if (Dialogs.Confirm("Delete entry", msg, "Delete", true))
-                { State.Data.Sessions.Remove(s); State.Notify(); State.Toast("Entry deleted"); }
+                // no confirmation: deleting is instantly undoable (the invoice, if any, keeps its own copy of the lines)
+                var label = (string.IsNullOrWhiteSpace(s.Task) ? Loc.T("Work session") : s.Task) + " · " + Fmt.Hm(s.DurationMilliseconds);
+                var t = TrashBin.Add("Session", s, label);
+                State.Data.Sessions.Remove(s); State.Notify(); State.ToastUndo("Entry deleted", t);
             }, true));
             Grid.SetColumn(right, 4); g.Children.Add(right);
         }
@@ -155,7 +166,9 @@ public class EntriesPage : PageBase
         var time = Ui.Input(start.ToString(d.Settings.Use24Hour ? "HH:mm" : "h:mm tt", CultureInfo.CurrentCulture), "9:30 AM");
         var dur = Ui.Input(editing != null ? FormatDuration(editing.DurationMilliseconds) : "1:00", "1:30 or 1.5");
         var rate = Ui.Input(editing != null ? Fmt.Dec(editing.HourlyRate) : Fmt.Dec(projects[0].HourlyRate), "0");
-        pc.SelectionChanged += (_, _) => { if (editing == null && pc.SelectedItem is Project p) rate.Text = Fmt.Dec(p.HourlyRate); };
+        var billable = Ui.Check("Billable", editing?.Billable ?? projects[0].Billable);
+        var tags = Ui.Input(editing != null ? string.Join(", ", editing.Tags) : "", "design, meeting");
+        pc.SelectionChanged += (_, _) => { if (editing == null && pc.SelectedItem is Project p) { rate.Text = Fmt.Dec(p.HourlyRate); billable.IsChecked = p.Billable; } };
         var err = Dialogs.ErrorLabel();
 
         var row = new Grid();
@@ -171,6 +184,8 @@ public class EntriesPage : PageBase
         body.Children.Add(Ui.Field("PROJECT", pc));
         body.Children.Add(Ui.Field("DESCRIPTION", task));
         body.Children.Add(row); body.Children.Add(row2);
+        body.Children.Add(Ui.Field("TAGS (COMMA SEPARATED)", tags));
+        body.Children.Add(billable.WithMargin(0, 0, 0, 12));
         body.Children.Add(Ui.Text(Loc.F("Times are in {0} (change in Settings).", State.Tz.StandardName), 12, "FaintBrush").WithMargin(0, -4, 0, 12));
         body.Children.Add(err);
 
@@ -188,8 +203,12 @@ public class EntriesPage : PageBase
             var s = editing ?? new Session();
             s.ProjectId = p.Id; s.Task = task.Text.Trim(); s.StartedAtUtc = startUtc;
             s.DurationMilliseconds = ms; s.EndedAtUtc = startUtc.AddMilliseconds(ms); s.HourlyRate = Math.Round(r, 2);
+            s.Billable = billable.IsChecked == true;
+            s.Tags = tags.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
+            if (editing == null) s.Source = "manual";
             if (editing == null) d.Sessions.Add(s);
             State.Notify(); State.Toast(editing == null ? "Entry added" : "Entry updated");
+            Budget.Check(p);
             return true;
         }, 500);
     }
@@ -220,7 +239,7 @@ public class EntriesPage : PageBase
 
         var inv = CultureInfo.InvariantCulture;
         var sb = new StringBuilder();
-        sb.AppendLine("Date,Start time,End time,Time zone,UTC offset,Start (UTC),Project,Client,Description,Duration hours,Hourly rate,Amount,Currency,Invoice");
+        sb.AppendLine("Date,Start time,End time,Time zone,UTC offset,Start (UTC),Project,Client,Description,Duration hours,Hourly rate,Amount,Currency,Invoice,Billable,Tags");
         foreach (var s in rows)
         {
             var p = State.Proj(s.ProjectId);
@@ -231,7 +250,7 @@ public class EntriesPage : PageBase
                 Q(State.Tz.Id), Q(State.OffsetText(s.StartedAtUtc)), Q(s.StartedAtUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", inv)),
                 Q(p?.Name ?? Loc.T("Deleted project")), Q(p?.Client ?? ""), Q(s.Task ?? ""),
                 (s.DurationMilliseconds / 3600000m).ToString("0.0000", inv), s.HourlyRate.ToString("0.00", inv),
-                State.Earned(s).ToString("0.00", inv), State.Data.Settings.CurrencyCode, Q(invoice)));
+                State.Earned(s).ToString("0.00", inv), State.Data.Settings.CurrencyCode, Q(invoice), s.Billable ? "yes" : "no", Q(string.Join("; ", s.Tags))));
         }
         try
         {

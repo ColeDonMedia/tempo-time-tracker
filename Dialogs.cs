@@ -5,6 +5,10 @@ namespace Tempo;
 
 public static class Dialogs
 {
+    /// <summary>Developer screenshot mode: when set, dialogs are rendered to PNG files here instead of being shown.</summary>
+    public static string? CaptureDir;
+    public static string CaptureTag = "dialog";
+
     /// <summary>Glass-styled modal. onOk returns true to close (so it can validate and keep the dialog open).</summary>
     public static bool Show(string title, UIElement body, string okText, Func<bool>? onOk = null, double width = 480, bool danger = false)
     {
@@ -12,7 +16,8 @@ public static class Dialogs
         {
             Title = Loc.T(title), Width = width, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
-            ShowInTaskbar = false, FontSize = 14, UseLayoutRounding = true
+            ShowInTaskbar = false, FontSize = 14, UseLayoutRounding = true,
+            MaxHeight = SystemParameters.WorkArea.Height * 0.92
         };
         var owner = Application.Current.Windows.OfType<Window>().FirstOrDefault(x => x.IsActive && x.IsVisible)
                     ?? Application.Current.Windows.OfType<Window>().FirstOrDefault(x => x.IsVisible);
@@ -35,6 +40,22 @@ public static class Dialogs
         root.Children.Add(row);
 
         w.Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        if (CaptureDir != null)
+        {
+            // developer screenshot mode: draw the dialog to a PNG instead of waiting for a click
+            w.WindowStartupLocation = WindowStartupLocation.Manual; w.Left = -6000; w.Top = 0; w.Owner = null; w.ShowInTaskbar = false;
+            w.Show(); w.UpdateLayout();
+            var fe = (FrameworkElement)w.Content;
+            int cw = (int)Math.Ceiling(w.ActualWidth), ch = (int)Math.Ceiling(Math.Min(w.ActualHeight, 1400));
+            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(cw, ch, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            var bg = new System.Windows.Media.DrawingVisual();
+            using (var dc = bg.RenderOpen()) dc.DrawRectangle(Ui.B("PopupBrush"), null, new Rect(0, 0, cw, ch));
+            rtb.Render(bg); rtb.Render(fe);
+            var enc = new System.Windows.Media.Imaging.PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+            using (var fs = System.IO.File.Create(System.IO.Path.Combine(CaptureDir, $"dialog-{CaptureTag}.png"))) enc.Save(fs);
+            w.Close();
+            return false;
+        }
         return w.ShowDialog() == true;
     }
 

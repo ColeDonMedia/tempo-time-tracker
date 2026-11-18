@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     {
         ("Overview", "Overview", Icons.Home),
         ("Projects", "Projects", Icons.Folder),
+        ("Clients", "Clients", Icons.Users),
         ("Entries", "Time entries", Icons.Clock),
         ("Invoices", "Invoices", Icons.Doc),
         ("Settings", "Settings", Icons.Sliders),
@@ -73,6 +74,7 @@ public partial class MainWindow : Window
         ApplyChrome();
         State.Changed += OnChanged;
         State.ToastRequested += ShowToast;
+        State.ToastActionRequested += ShowToastAction;
         tick.Tick += (_, _) => OnTick();
         tick.Start();
         PreviewKeyDown += OnKey;
@@ -121,6 +123,7 @@ public partial class MainWindow : Window
         PageBase page = key switch
         {
             "Projects" => new ProjectsPage(),
+            "Clients" => new ClientsPage(),
             "Entries" => new EntriesPage(),
             "Invoices" => new InvoicesPage(),
             "Settings" => new SettingsPage(),
@@ -212,7 +215,7 @@ public partial class MainWindow : Window
             e.Handled = true;
             ToggleTimerShortcut();
         }
-        else if (e.Key >= Key.D1 && e.Key <= Key.D5)
+        else if (e.Key >= Key.D1 && e.Key < Key.D1 + Pages.Length)
         {
             e.Handled = true;
             Navigate(Pages[e.Key - Key.D1].Key);
@@ -263,8 +266,36 @@ public partial class MainWindow : Window
         finally { prompting = false; }
     }
 
+    Action? toastAction;
+
+    void ToastAction_Click(object sender, RoutedEventArgs e)
+    {
+        var a = toastAction; toastAction = null;
+        ToastBorder.BeginAnimation(OpacityProperty, null); ToastBorder.Opacity = 0; ToastBorder.IsHitTestVisible = false;
+        a?.Invoke();
+    }
+
+    /// <summary>A toast with one button (used for Undo). It stays a little longer so there is time to click it.</summary>
+    public void ShowToastAction(string message, string label, Action action)
+    {
+        toastAction = action;
+        ToastText.Text = message;
+        ToastAction.Content = label;
+        ToastAction.Visibility = Visibility.Visible;
+        ToastBorder.IsHitTestVisible = true;
+        ToastDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "GoodBrush");
+        var a = new DoubleAnimationUsingKeyFrames();
+        a.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        a.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(200))));
+        a.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(6500))));
+        a.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(6900))));
+        a.Completed += (_, _) => { if (ToastBorder.Opacity == 0) { ToastBorder.IsHitTestVisible = false; toastAction = null; } };
+        ToastBorder.BeginAnimation(OpacityProperty, a);
+    }
+
     public void ShowToast(string message, bool error = false)
     {
+        ToastAction.Visibility = Visibility.Collapsed; ToastBorder.IsHitTestVisible = false; toastAction = null;
         ToastText.Text = Loc.T(message);
         ToastDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, error ? "WarnBrush" : "GoodBrush");
         var a = new DoubleAnimationUsingKeyFrames();

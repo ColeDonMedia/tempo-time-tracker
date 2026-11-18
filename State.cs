@@ -19,7 +19,16 @@ public static class State
     public static event Action? Changed;
     public static event Action<string, bool>? ToastRequested;
 
+    public static event Action<string, string, Action>? ToastActionRequested;
+
     public static void Toast(string message, bool error = false) => ToastRequested?.Invoke(Loc.T(message), error);
+
+    /// <summary>Toast with an Undo button that brings the deleted item back.</summary>
+    public static void ToastUndo(string message, TrashItem item) =>
+        ToastActionRequested?.Invoke(Loc.T(message), Loc.T("Undo"), () => { if (TrashBin.Restore(item)) Toast("Restored"); });
+
+    public static Client? ClientOf(Project? p) => p == null ? null : Data.Clients.FirstOrDefault(c => c.Id == p.ClientId);
+    public static string ClientName(Project? p) => ClientOf(p)?.Name ?? p?.Client ?? "";
 
     // ---------- persistence ----------
     public static void Load()
@@ -52,7 +61,25 @@ public static class State
     {
         Data.Projects ??= new(); Data.Sessions ??= new(); Data.Invoices ??= new();
         Data.Settings ??= new(); Data.Billing ??= new(); Data.Timer ??= new();
+        Data.Clients ??= new(); Data.Expenses ??= new(); Data.Trash ??= new(); Data.Recurring ??= new();
+        foreach (var s in Data.Sessions) s.Tags ??= new();
         if (string.IsNullOrWhiteSpace(Data.Settings.TimeZoneId)) Data.Settings.TimeZoneId = TimeZoneInfo.Local.Id;
+
+        // Older data keeps the client as text on each project; turn those into real client records (merged by name).
+        foreach (var p in Data.Projects)
+        {
+            if (!string.IsNullOrEmpty(p.ClientId) && Data.Clients.Any(c => c.Id == p.ClientId)) continue;
+            var name = (p.Client ?? "").Trim();
+            if (name.Length == 0) continue;
+            var c = Data.Clients.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (c == null) { c = new Client { Name = name, Email = p.ClientEmail ?? "", Address = p.ClientAddress ?? "" }; Data.Clients.Add(c); }
+            else
+            {
+                if (c.Email.Length == 0) c.Email = p.ClientEmail ?? "";
+                if (c.Address.Length == 0) c.Address = p.ClientAddress ?? "";
+            }
+            p.ClientId = c.Id;
+        }
         if (string.IsNullOrWhiteSpace(Data.InvoiceNumber) || Data.Invoices.Any(i => i.Number == Data.InvoiceNumber))
             Data.InvoiceNumber = NextInvoiceNumber();
     }
@@ -89,6 +116,8 @@ public static class State
     // ---------- lookups ----------
     public static Project? Proj(string? id) => Data.Projects.FirstOrDefault(p => p.Id == id);
     public static decimal Earned(Session s) => Math.Round(s.DurationMilliseconds / 3600000m * s.HourlyRate, 2);
+    /// <summary>What a session is worth on an invoice: zero when it is marked non-billable.</summary>
+    public static decimal Billed(Session s) => s.Billable ? Earned(s) : 0m;
     public static IEnumerable<Project> ActiveProjects => Data.Projects.Where(p => !p.Archived);
 
     // ---------- timezone ----------
@@ -195,12 +224,15 @@ public static class State
                 StartedAtUtc = t.StartedAtUtc ?? end.AddMilliseconds(-ms),
                 EndedAtUtc = end,
                 DurationMilliseconds = ms,
-                HourlyRate = project.HourlyRate
+                HourlyRate = project.HourlyRate,
+                Billable = project.Billable,
+                Source = "timer"
             };
             Data.Sessions.Add(saved);
         }
         Data.Timer = new TimerSnapshot { ProjectId = t.ProjectId };
         Notify();
+        if (saved != null) Budget.Check(project);
         return saved;
     }
 
@@ -219,13 +251,13 @@ public static class State
     public static decimal WeekEarned(DateTime localDay)
     {
         var ws = WeekStart(localDay); var we = ws.AddDays(7);
-        var sum = Data.Sessions.Where(s => { var d = ToLocal(s.StartedAtUtc).Date; return d >= ws && d < we; }).Sum(Earned);
-        if (HasTimer && Data.Timer.StartedAtUtc is DateTime st && ToLocal(st).Date >= ws && ToLocal(st).Date < we && Proj(Data.Timer.ProjectId) is Project p)
+        var sum = Data.Sessions.Where(s => { var d = ToLocal(s.StartedAtUtc).Date; return d >= ws && d < we; }).Sum(Billed);
+        if (HasTimer && Data.Timer.StartedAtUtc is DateTime st && ToLocal(st).Date >= ws && ToLocal(st).Date < we && Proj(Data.Timer.ProjectId) is Project { Billable: true } p)
             sum += Math.Round(ElapsedMs / 3600000m * p.HourlyRate, 2);
         return sum;
     }
-    public static decimal Unbilled => Data.Sessions.Where(s => s.InvoiceId == null).Sum(Earned);
-    public static decimal UnbilledFor(string projectId) => Data.Sessions.Where(s => s.InvoiceId == null && s.ProjectId == projectId).Sum(Earned);
+    public static decimal Unbilled => Data.Sessions.Where(s => s.InvoiceId == null && s.Billable).Sum(Earned);
+    public static decimal UnbilledFor(string projectId) => Data.Sessions.Where(s => s.InvoiceId == null && s.Billable && s.ProjectId == projectId).Sum(Earned);
 }
 
 public static class Fmt

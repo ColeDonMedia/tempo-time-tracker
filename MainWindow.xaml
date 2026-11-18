@@ -88,7 +88,9 @@
                 <Border.Effect><DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.35"/></Border.Effect>
                 <StackPanel Orientation="Horizontal">
                     <Ellipse x:Name="ToastDot" Width="8" Height="8" Margin="0,0,10,0" Fill="{DynamicResource GoodBrush}"/>
-                    <TextBlock x:Name="ToastText" MaxWidth="620" TextWrapping="Wrap" FontWeight="Medium"/>
+                    <TextBlock x:Name="ToastText" MaxWidth="620" TextWrapping="Wrap" FontWeight="Medium" VerticalAlignment="Center"/>
+                    <Button x:Name="ToastAction" Style="{StaticResource GhostButton}" Visibility="Collapsed" Margin="14,-6,-10,-6" Padding="12,4"
+                            Foreground="{DynamicResource AccentBrush}" Click="ToastAction_Click"/>
                 </StackPanel>
             </Border>
         </Grid>

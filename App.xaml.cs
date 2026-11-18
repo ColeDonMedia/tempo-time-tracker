@@ -40,6 +40,11 @@ public partial class App : Application
         }
         if (Args.Contains("--demo") && Environment.GetEnvironmentVariable("TEMPO_DATA_DIR") != null)
             DemoData.Seed();
+        if (Args.Contains("--selftest") && Environment.GetEnvironmentVariable("TEMPO_DATA_DIR") != null)
+        {
+            SelfTest.Run(Args[Array.IndexOf(Args, "--selftest") + 1]);
+            Shutdown(); return;
+        }
         if (Args.Contains("--make-icon"))
         {
             MakeIcon(Args[Array.IndexOf(Args, "--make-icon") + 1]);
@@ -100,7 +105,7 @@ public partial class App : Application
     {
         System.IO.Directory.CreateDirectory(dir);
         var prefix = (Loc.Current == "en" ? "" : Loc.Current + "-") + (IsDark ? "dark" : "light");
-        foreach (var (key, name) in new[] { ("Overview", "overview"), ("Projects", "projects"), ("Entries", "entries"), ("Invoices", "invoices"), ("Settings", "settings") })
+        foreach (var (key, name) in new[] { ("Overview", "overview"), ("Projects", "projects"), ("Clients", "clients"), ("Entries", "entries"), ("Invoices", "invoices"), ("Settings", "settings") })
         {
             win.Navigate(key);
             await Task.Delay(1200);
@@ -116,6 +121,14 @@ public partial class App : Application
             using var fs = System.IO.File.Create(System.IO.Path.Combine(dir, $"{prefix}-{name}.png"));
             enc.Save(fs);
         }
+        // dialogs (rendered, not shown)
+        Dialogs.CaptureDir = dir;
+        void Dlg(string tag, Action show) { Dialogs.CaptureTag = (Loc.Current == "en" ? "" : Loc.Current + "-") + tag; try { show(); } catch { } }
+        Dlg("project-edit", () => ProjectsPage.EditProject(State.Data.Projects.FirstOrDefault()));
+        Dlg("client-edit", () => ClientsPage.EditClient(State.Data.Clients.FirstOrDefault()));
+        Dlg("entry-edit", () => EntriesPage.EditEntry(State.Data.Sessions.FirstOrDefault()));
+        Dialogs.CaptureDir = null;
+
         // the compact view, with a demo timer running
         var t = State.Data.Timer;
         t.ProjectId = State.Data.Projects.FirstOrDefault()?.Id; t.Task = "Brand sketches";

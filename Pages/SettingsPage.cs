@@ -133,6 +133,29 @@ public class SettingsPage : PageBase
         dp.Children.Add(row);
         root.Children.Add(Block(dp));
 
+        // ---------- Recently deleted ----------
+        var tr = new StackPanel();
+        tr.Children.Add(Section("Recently deleted", "Anything you delete waits here so you can bring it back. Nothing is removed for good until you empty this list."));
+        if (d.Trash.Count == 0) tr.Children.Add(Ui.Text("Nothing deleted recently.", 13, "FaintBrush"));
+        foreach (var ti in d.Trash.OrderByDescending(x => x.DeletedUtc).Take(40).ToList())
+        {
+            var g = new Grid { Margin = new Thickness(0, 4, 0, 4) };
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            g.ColumnDefinitions.Add(new ColumnDefinition());
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var kind = Ui.Pill(ti.Kind == "Session" ? "Time entry" : ti.Kind, "MutedBrush", "FieldBrush"); kind.Margin = new Thickness(0, 0, 12, 0);
+            g.Children.Add(kind);
+            var lab = Ui.Text(ti.Label, 13.5, "TextBrush"); lab.VerticalAlignment = VerticalAlignment.Center; Grid.SetColumn(lab, 1); g.Children.Add(lab);
+            var acts = new StackPanel { Orientation = Orientation.Horizontal };
+            var item = ti;
+            acts.Children.Add(Ui.Btn("Restore", () => { if (TrashBin.Restore(item)) { State.Toast("Restored"); Build(); } }, "GlassButton", Icons.Undo));
+            acts.Children.Add(Ui.IconBtn(Icons.Trash, "Delete forever", () => { TrashBin.Purge(item); Build(); }, true));
+            Grid.SetColumn(acts, 2); g.Children.Add(acts);
+            tr.Children.Add(g);
+        }
+        if (d.Trash.Count > 0) tr.Children.Add(Ui.Btn("Empty list", () => { TrashBin.Empty(); Build(); }, "DangerButton").HorizontalLeft().WithMargin(0, 12, 0, 0));
+        root.Children.Add(Block(tr));
+
         // ---------- About ----------
         var ab = new StackPanel();
         var ver = typeof(SettingsPage).Assembly.GetName().Version?.ToString(3) ?? "";
@@ -143,7 +166,7 @@ public class SettingsPage : PageBase
         // ---------- Shortcuts ----------
         var sc = new StackPanel();
         sc.Children.Add(Section("Keyboard shortcuts", ""));
-        foreach (var (k, v) in new[] { ("Ctrl + Space", "Start / pause the timer"), ("Ctrl + 1 … 5", "Jump between pages"), ("Ctrl + M", "Switch between full and mini view"), ("Enter / Esc", "Confirm / cancel dialogs") })
+        foreach (var (k, v) in new[] { ("Ctrl + Space", "Start / pause the timer"), ("Ctrl + 1 … 7", "Jump between pages"), ("Ctrl + M", "Switch between full and mini view"), ("Enter / Esc", "Confirm / cancel dialogs") })
         {
             var g = new Grid { Margin = new Thickness(0, 3, 0, 3) };
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) }); g.ColumnDefinitions.Add(new ColumnDefinition());

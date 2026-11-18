@@ -29,6 +29,21 @@ public static class Icons
     public const string Mini = "M4,5 H20 V19 H4 Z M12,12 H20 V19 H12 Z";
     public const string Expand = "M4,10 V4 H10 M20,14 V20 H14 M4,4 L11,11 M20,20 L13,13";
     public const string Pin = "M9,3 H15 L14.5,9 L18,13 H6 L9.5,9 Z M12,13 V21";
+    public const string Users = "M9,11 A3.5,3.5 0 1 0 9,4 A3.5,3.5 0 1 0 9,11 M2.5,20 V18 A4,4 0 0 1 6.5,14 H11.5 A4,4 0 0 1 15.5,18 V20 M16,4.3 A3.5,3.5 0 0 1 16,10.7 M18.5,14.2 A4,4 0 0 1 21.5,18 V20";
+    public const string Chart = "M4,20 V10 M10,20 V4 M16,20 V13 M22,20 H2";
+    public const string Receipt = "M6,3 H18 V21 L15,19 L12,21 L9,19 L6,21 Z M9,8 H15 M9,12 H15";
+    public const string Calendar = "M4,6 H20 V20 H4 Z M4,10 H20 M8,3 V7 M16,3 V7";
+    public const string Search = "M10.5,17 A6.5,6.5 0 1 0 10.5,4 A6.5,6.5 0 1 0 10.5,17 M15.5,15.5 L20,20";
+    public const string Copy = "M9,9 H20 V20 H9 Z M5,15 V4 H16";
+    public const string Tag = "M3,12 L12,3 H20 V11 L11,20 Z M16,8 H16.01";
+    public const string Undo = "M9,7 L4,12 L9,17 M4,12 H15 A5,5 0 0 1 15,22 H11";
+    public const string Bell = "M6,17 V11 A6,6 0 0 1 18,11 V17 L20,19 H4 Z M10,21 H14";
+    public const string Link = "M10,14 A4,4 0 0 0 15.7,14.3 L19,11 A4,4 0 0 0 13.3,5.3 L12,6.6 M14,10 A4,4 0 0 0 8.3,9.7 L5,13 A4,4 0 0 0 10.7,18.7 L12,17.4";
+    public const string Dollar = "M12,3 V21 M16,7 H10 A3,3 0 0 0 10,13 H14 A3,3 0 0 1 14,19 H8";
+    public const string Upload = "M12,20 V9 M7,14 L12,9 L17,14 M5,4 H19";
+    public const string Grid = "M4,4 H20 V20 H4 Z M4,12 H20 M12,4 V20";
+    public const string Split = "M12,3 V21 M5,8 H9 M15,16 H19";
+    public const string Merge = "M5,4 L12,12 L19,4 M12,12 V21";
     public const string Archive = "M3,5 H21 V9 H3 Z M5,9 V19 H19 V9 M10,13 H14";
 }
 
@@ -109,10 +124,45 @@ public static class Ui
         var sp = new StackPanel { Margin = new Thickness(0, 0, 0, gap) };
         sp.Children.Add(Text(Loc.T(label), 12, "MutedBrush", FontWeights.SemiBold).WithMargin(0, 0, 0, 6));
         sp.Children.Add(ctl);
+        System.Windows.Automation.AutomationProperties.SetName(ctl, Loc.T(label));
         return sp;
     }
 
     public static T HorizontalLeft<T>(this T e) where T : FrameworkElement { e.HorizontalAlignment = HorizontalAlignment.Left; return e; }
+
+    /// <summary>A labelled check box (label is translated).</summary>
+    public static CheckBox Check(string label, bool value)
+    {
+        var c = new CheckBox { Content = Loc.T(label), IsChecked = value };
+        System.Windows.Automation.AutomationProperties.SetName(c, Loc.T(label));
+        return c;
+    }
+
+    /// <summary>Segmented tab strip; onSelect gets the index of the tab the user picked.</summary>
+    public static StackPanel Tabs(string[] labels, int selected, Action<int> onSelect)
+    {
+        var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 18) };
+        var group = "tabs" + Guid.NewGuid().ToString("N");
+        for (int i = 0; i < labels.Length; i++)
+        {
+            var rb = new RadioButton { Content = Loc.T(labels[i]), GroupName = group, IsChecked = i == selected, Style = (Style)Application.Current.FindResource("TabButton"), Margin = new Thickness(0, 0, 6, 0) };
+            int idx = i;
+            rb.Checked += (_, _) => onSelect(idx);
+            sp.Children.Add(rb);
+        }
+        return sp;
+    }
+
+    public static Border Progress(double fraction, string fillBrushKey, double height = 6)
+    {
+        var track = new Border { Height = height, CornerRadius = new CornerRadius(height / 2) };
+        track.SetResourceReference(Border.BackgroundProperty, "FieldBorderBrush");
+        var fill = new Border { CornerRadius = new CornerRadius(height / 2), HorizontalAlignment = HorizontalAlignment.Left };
+        fill.SetResourceReference(Border.BackgroundProperty, fillBrushKey);
+        track.Child = fill;
+        track.SizeChanged += (_, e) => fill.Width = Math.Max(0, Math.Min(1, fraction)) * e.NewSize.Width;
+        return track;
+    }
 
     public static T WithMargin<T>(this T e, double l, double t, double r, double b) where T : FrameworkElement
     { e.Margin = new Thickness(l, t, r, b); return e; }
