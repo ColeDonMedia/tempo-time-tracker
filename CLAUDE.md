@@ -1,5 +1,5 @@
 # Project
-Tempo: Windows time tracker + invoicing. .NET 8 WPF (code-built UI, no XAML pages, no NuGet packages), JSON storage, own PDF writer and QR encoder. MIT, GitHub: ColeyD12345/tempo-time-tracker.
+Tempo: Windows time tracker + invoicing. .NET 8 WPF (code-built UI, no XAML pages, no NuGet packages), JSON storage, own PDF writer and QR encoder. MIT, GitHub: ColeDonMedia/tempo-time-tracker (renamed from ColeyD12345).
 
 # Commands
 - Test (build + self-test): powershell -File scripts/test.ps1
@@ -32,7 +32,7 @@ Tempo: Windows time tracker + invoicing. .NET 8 WPF (code-built UI, no XAML page
 # Safety
 - Never publish screenshots of the Settings page (they show local paths).
 - Never kill processes by name. Stop only your own PID or the exe in this build folder.
-- Commit as ColeyD12345 (noreply email) with the Co-Authored-By trailer. Push only when asked.
+- Commit with the GitHub noreply email with the Co-Authored-By trailer. Push only when asked.
 
 # Context hygiene
 - /clear between unrelated tasks. /compact when a session gets long.

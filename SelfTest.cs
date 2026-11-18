@@ -256,14 +256,14 @@ public static class SelfTest
         Check("update: newer tag is detected (with or without v)", UpdateService.IsNewer("2.5.0", "v2.6.0") && UpdateService.IsNewer("2.5.0", "2.5.1") && UpdateService.IsNewer("2.9.0", "v2.10.0"));
         Check("update: same or older tag is not an update", !UpdateService.IsNewer("2.6.0", "v2.6.0") && !UpdateService.IsNewer("2.6.0", "v2.5.9") && !UpdateService.IsNewer("2.6.0", "2.6"));
         Check("update: junk tags are ignored", !UpdateService.IsNewer("2.6.0", "latest") && !UpdateService.IsNewer("2.6.0", "") && !UpdateService.IsNewer("2.6.0", "v3.0.0-beta.1"));
-        var json = "{\"tag_name\":\"v2.7.0\",\"html_url\":\"https://github.com/ColeyD12345/tempo-time-tracker/releases/tag/v2.7.0\",\"draft\":false,\"prerelease\":false}";
+        var json = "{\"tag_name\":\"v2.7.0\",\"html_url\":\"https://github.com/ColeDonMedia/tempo-time-tracker/releases/tag/v2.7.0\",\"draft\":false,\"prerelease\":false}";
         var parsed = UpdateService.ParseLatest(json);
         Check("update: release JSON is read", parsed is { Tag: "v2.7.0" } p && p.Url.EndsWith("/v2.7.0"));
         Check("update: drafts, pre-releases and broken JSON are skipped", UpdateService.ParseLatest(json.Replace("\"prerelease\":false", "\"prerelease\":true")) == null && UpdateService.ParseLatest("{oops") == null);
         Check("update: only this repo's GitHub release pages are opened",
-            UpdateService.IsTrustedUrl("https://github.com/ColeyD12345/tempo-time-tracker/releases/tag/v2.7.0")
-            && !UpdateService.IsTrustedUrl("http://github.com/ColeyD12345/tempo-time-tracker/releases/tag/v2.7.0")
-            && !UpdateService.IsTrustedUrl("https://github.com.evil.example/ColeyD12345/tempo-time-tracker/releases/x")
+            UpdateService.IsTrustedUrl("https://github.com/ColeDonMedia/tempo-time-tracker/releases/tag/v2.7.0")
+            && !UpdateService.IsTrustedUrl("http://github.com/ColeDonMedia/tempo-time-tracker/releases/tag/v2.7.0")
+            && !UpdateService.IsTrustedUrl("https://github.com.evil.example/ColeDonMedia/tempo-time-tracker/releases/x")
             && !UpdateService.IsTrustedUrl("https://github.com/someone-else/tempo-time-tracker/releases/x")
             && !UpdateService.IsTrustedUrl("file:///C:/Windows/System32/calc.exe"));
     }

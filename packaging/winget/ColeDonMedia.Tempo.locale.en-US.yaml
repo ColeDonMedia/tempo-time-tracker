@@ -1,12 +1,12 @@
-PackageIdentifier: ColeyD12345.Tempo
+PackageIdentifier: ColeDonMedia.Tempo
 PackageVersion: {VERSION}
 PackageLocale: en-US
-Publisher: ColeyD12345
-PublisherUrl: https://github.com/ColeyD12345
+Publisher: ColeDonMedia
+PublisherUrl: https://github.com/ColeDonMedia
 PackageName: Tempo
-PackageUrl: https://github.com/ColeyD12345/tempo-time-tracker
+PackageUrl: https://github.com/ColeDonMedia/tempo-time-tracker
 License: MIT
-LicenseUrl: https://github.com/ColeyD12345/tempo-time-tracker/blob/main/LICENSE
+LicenseUrl: https://github.com/ColeDonMedia/tempo-time-tracker/blob/main/LICENSE
 ShortDescription: Time tracking and invoicing for freelancers and small studios, with a glass Windows 11 look.
 Description: |-
   Tempo tracks time per project and client, then turns it into invoices and quotes (PDF with a pay-now QR code).
@@ -18,6 +18,6 @@ Tags:
   - invoicing
   - freelance
   - productivity
-ReleaseNotesUrl: https://github.com/ColeyD12345/tempo-time-tracker/releases/tag/v{VERSION}
+ReleaseNotesUrl: https://github.com/ColeDonMedia/tempo-time-tracker/releases/tag/v{VERSION}
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0

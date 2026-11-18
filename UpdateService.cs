@@ -6,7 +6,7 @@ namespace Tempo;
 /// <summary>Opt-in check for a newer release on GitHub. It never downloads or runs anything: it only offers to open the release page.</summary>
 public static class UpdateService
 {
-    public const string Repo = "ColeyD12345/tempo-time-tracker";
+    public const string Repo = "ColeDonMedia/tempo-time-tracker";
     const string Api = "https://api.github.com/repos/" + Repo + "/releases/latest";
 
     /// <summary>True when <paramref name="tag"/> (e.g. "v2.7.0") is a plain release version above <paramref name="current"/>.</summary>
