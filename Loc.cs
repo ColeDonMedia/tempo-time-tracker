@@ -58,6 +58,8 @@ public static partial class Loc
         {
             var two = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
             s.Language = Languages.Any(l => l.Code == two) ? two : "en";
+            // first run: match the clock style Windows uses (most of the world uses 24-hour time)
+            s.Use24Hour = !CultureInfo.CurrentCulture.DateTimeFormat.ShortTimePattern.Contains('t');
         }
         Set(s.Language);
     }

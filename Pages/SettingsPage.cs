@@ -233,8 +233,7 @@ public class SettingsPage : PageBase
         me.LostFocus += (_, _) => { s.MemberName = me.Text.Trim(); State.Save(); };
         var syncText = Ui.Text(string.IsNullOrEmpty(s.SyncFolder) ? Loc.T("Off: no folder chosen") : s.SyncFolder, 13, "MutedBrush");
         syncText.TextTrimming = TextTrimming.CharacterEllipsis;
-        sy.Children.Add(Pair(Ui.Field("YOUR NAME ON SHARED ENTRIES", me), Ui.Field("SYNC FOLDER", syncText)));
-        var syRow = new WrapPanel();
+        var syRow = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
         syRow.Children.Add(Ui.Btn("Choose folder…", () =>
         {
             var dlg = new Microsoft.Win32.OpenFolderDialog { Title = Loc.T("Choose a sync folder") };
@@ -250,7 +249,14 @@ public class SettingsPage : PageBase
             syRow.Children.Add(Ui.Btn("Sync now", () => { var r = SyncService.Run(); State.Toast(r != null ? Loc.F("Synced: {0} changes received", r.Received + r.Removed) : "That folder can't be written to.", r == null); Build(); }, "GlassButton", Icons.Undo).WithMargin(0, 0, 8, 8));
             syRow.Children.Add(Ui.Btn("Turn off", () => { s.SyncFolder = ""; State.Save(); Build(); }, "GlassButton").WithMargin(0, 0, 8, 8));
         }
-        sy.Children.Add(syRow);
+        // folder status and its buttons sit together; the name only matters once a folder is chosen
+        var folderCol = new StackPanel();
+        folderCol.Children.Add(Ui.Field("SYNC FOLDER", syncText, 0));
+        folderCol.Children.Add(syRow);
+        var nameCol = new StackPanel();
+        nameCol.Children.Add(Ui.Field("YOUR NAME ON SHARED ENTRIES", me, 4));
+        nameCol.Children.Add(Ui.Text("Shown on entries you track, so teammates can tell who did what.", 12, "FaintBrush", wrap: true));
+        sy.Children.Add(Pair(folderCol, nameCol));
         if (SyncService.BlockedRemovals > 0)
         {
             sy.Children.Add(Ui.Text(Loc.F("Another device deleted {0} items. That's a lot at once, so nothing was removed here yet.", SyncService.BlockedRemovals), 13, "WarnBrush", wrap: true).WithMargin(0, 4, 0, 6));

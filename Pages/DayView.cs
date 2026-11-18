@@ -39,6 +39,8 @@ public static class DayView
         }
         else { showFrom = 8; showTo = 18; }
         card.Children.Add(Strip(date, sessions, overlapIds, showFrom, showTo));
+        card.Children.Add(Ui.Text(overlapIds.Count > 0 ? "Each block is an entry in its project's colour. Half-height blocks with an amber edge overlap each other. Hover a block for details."
+                                                       : "Each block is an entry in its project's colour. Hover a block for details.", 12, "FaintBrush", wrap: true).WithMargin(0, 8, 0, 0));
         root.Children.Add(Ui.Card(card).WithMargin(0, 0, 0, 18));
 
         // ---- overlaps ----
@@ -52,8 +54,10 @@ public static class DayView
                 ov.Children.Add(EntriesPage.SessionRow(a, false));
                 ov.Children.Add(EntriesPage.SessionRow(b, false).WithMargin(0, 0, 0, 10));
                 var acts = new WrapPanel { Margin = new Thickness(4, 0, 0, 12) };
-                acts.Children.Add(Ui.Btn("Edit first", () => EntriesPage.EditEntry(a), "GlassButton", Icons.Edit).WithMargin(0, 0, 8, 0));
-                acts.Children.Add(Ui.Btn("Edit second", () => EntriesPage.EditEntry(b), "GlassButton", Icons.Edit));
+                // name the entries on the buttons, so there's no guessing which one "first" was
+                string Name(Session x) => string.IsNullOrWhiteSpace(x.Task) ? Loc.T("Work session") : x.Task;
+                acts.Children.Add(Ui.Btn(Loc.F("Edit “{0}”", Name(a)), () => EntriesPage.EditEntry(a), "GlassButton", Icons.Edit).WithMargin(0, 0, 8, 0));
+                acts.Children.Add(Ui.Btn(Loc.F("Edit “{0}”", Name(b)), () => EntriesPage.EditEntry(b), "GlassButton", Icons.Edit));
                 ov.Children.Add(acts);
             }
             root.Children.Add(Ui.Card(ov).WithMargin(0, 0, 0, 18));
@@ -173,6 +177,7 @@ public static class DayView
                     Background = new SolidColorBrush(Ui.ProjColor(p?.Color ?? "gold")),
                     ToolTip = $"{(string.IsNullOrWhiteSpace(s.Task) ? Loc.T("Work session") : s.Task)} · {p?.Name}\n{Fmt.Time(State.ToLocal(s.StartedAtUtc))} – {Fmt.Time(State.ToLocal(s.EndedAtUtc))}",
                 };
+                System.Windows.Automation.AutomationProperties.SetName(blk, ((string)blk.ToolTip).Replace("\n", ", "));
                 if (overlapIds.Contains(s.Id))
                 {
                     // overlapping entries share the row: draw them half-height, stacked, with an amber edge

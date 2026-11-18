@@ -137,7 +137,7 @@ public static class Ui
     /// <summary>A labelled check box (label is translated).</summary>
     public static CheckBox Check(string label, bool value)
     {
-        var c = new CheckBox { Content = Loc.T(label), IsChecked = value };
+        var c = new CheckBox { Content = new TextBlock { Text = Loc.T(label), TextWrapping = TextWrapping.Wrap }, IsChecked = value };
         System.Windows.Automation.AutomationProperties.SetName(c, Loc.T(label));
         return c;
     }

@@ -119,7 +119,15 @@ public class ReportsPage : PageBase
             root.Children.Add(warn.WithMargin(2, -6, 0, 14));
         }
         if (!costs)
-            root.Children.Add(Ui.Text("Tip: set a cost rate (what an hour costs you) in Settings or on a project to see profit here.", 12, "FaintBrush", wrap: true).WithMargin(2, -6, 0, 14));
+        {
+            var tip = new WrapPanel { Margin = new Thickness(2, -6, 0, 14) };
+            var tt = Ui.Text("Tip: set a cost rate (what an hour costs you) in Settings or on a project to see profit here.", 12.5, "MutedBrush", wrap: true);
+            tt.VerticalAlignment = VerticalAlignment.Center; tt.Margin = new Thickness(0, 0, 8, 0);
+            tip.Children.Add(tt);
+            var go = Ui.Btn("Open Settings", () => MainWindow.Instance.Navigate("Settings"), "GhostButton"); go.Padding = new Thickness(8, 4, 8, 4);
+            tip.Children.Add(go);
+            root.Children.Add(tip);
+        }
 
         // ---- results
         var card = new StackPanel();
