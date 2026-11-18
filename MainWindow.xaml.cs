@@ -292,6 +292,8 @@ public partial class MainWindow : Window
         if (State.Data.Settings.CheckUpdates && (DateTime.UtcNow - lastUpdateCheck).TotalHours >= 24) CheckForUpdate();
         if ((DateTime.UtcNow - lastBackupCheck).TotalHours >= 6) { lastBackupCheck = DateTime.UtcNow; BackupService.RunIfDue(); }
         if (DateTime.UtcNow.Second % 15 == 0) CheckReminders();
+        if (FocusMode.Tick() is string focusMsg) Notify(focusMsg);
+        ActivityRecorder.Tick();
         if (State.Running && State.ElapsedMs > 8 * 3600_000L && !longWarned)
         {
             longWarned = true;

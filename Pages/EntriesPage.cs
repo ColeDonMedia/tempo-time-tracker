@@ -17,7 +17,7 @@ public class EntriesPage : PageBase
 
     public static void SetTab(string t) => tab = t;
     static string tab = "Entries";   // Entries | Timesheet | Expenses (remembered while Tempo is open)
-    static readonly string[] Tabs = { "Entries", "Timesheet", "Expenses" };
+    static readonly string[] Tabs = { "Entries", "Day", "Timesheet", "Expenses" };
 
     UIElement TabStrip() => Ui.Tabs(Tabs, Array.IndexOf(Tabs, tab), i => { tab = Tabs[i]; Build(); });
 
@@ -25,6 +25,7 @@ public class EntriesPage : PageBase
     {
         Content = tab switch
         {
+            "Day" => DayView.Build(TabStrip, Build),
             "Timesheet" => TimesheetView.Build(TabStrip, Build),
             "Expenses" => ExpensesView.Build(TabStrip, Build),
             _ => BuildEntries(),
@@ -83,6 +84,7 @@ public class EntriesPage : PageBase
 
     /// <summary>Entries ticked for bulk actions (kept by id so a rebuild doesn't lose them).</summary>
     internal static readonly HashSet<string> Selected = new();
+    static HashSet<string> overlapIds = new();
 
     UIElement BulkBar(StackPanel list)
     {
@@ -131,6 +133,7 @@ public class EntriesPage : PageBase
         summary.Margin = new Thickness(10, 4, 0, 6);
         list.Children.Add(summary);
 
+        overlapIds = Timeline.OverlappingIds(State.Data.Sessions);
         DateTime? day = null;
         foreach (var s in all.Take(limit))
         {
@@ -180,9 +183,16 @@ public class EntriesPage : PageBase
         mid.Children.Add(Ui.Text(string.IsNullOrWhiteSpace(s.Task) ? Loc.T("Work session") : s.Task, 14.5, "TextBrush", FontWeights.SemiBold));
         var sub = $"{(p?.Name ?? Loc.T("Deleted project"))}{(string.IsNullOrWhiteSpace(p?.Client) ? "" : " · " + p!.Client)}  ·  {(actions ? "" : ls.ToString(Loc.ShortMonthDay(), CultureInfo.CurrentCulture) + ", ")}{Fmt.Time(ls)} – {Fmt.Time(le)}";
         mid.Children.Add(Ui.Text(sub, 12.5, "MutedBrush"));
-        if (!s.Billable || s.Tags.Count > 0)
+        bool overlaps = selectionChanged != null && overlapIds.Contains(s.Id);
+        if (!s.Billable || s.Tags.Count > 0 || overlaps)
         {
             var tp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 5, 0, 0) };
+            if (overlaps)
+            {
+                var op = Ui.Pill("Overlaps another entry", "WarnBrush", "WarnSoftBrush").WithMargin(0, 0, 6, 0);
+                op.ToolTip = Loc.T("Open the Day tab to see and fix it.");
+                tp.Children.Add(op);
+            }
             if (!s.Billable) tp.Children.Add(Ui.Pill("Non-billable", "WarnBrush", "WarnSoftBrush").WithMargin(0, 0, 6, 0));
             foreach (var tag in s.Tags.Take(6)) tp.Children.Add(Ui.Pill(tag, "MutedBrush", "FieldBrush").WithMargin(0, 0, 6, 0));
             mid.Children.Add(tp);

@@ -58,7 +58,14 @@ public class SettingsPage : PageBase
         t.Children.Add(Ui.Field("TIME ZONE", zone, 4));
         t.Children.Add(zoneClock.WithMargin(2, 0, 0, 14));
         t.Children.Add(Pair(Ui.Field("CLOCK", hour), Ui.Field("WEEK STARTS ON", week)));
-        t.Children.Add(Ui.Field("WEEKLY GOAL (HOURS)", goal, 0));
+        var dgoal = Ui.Input(s.DailyGoalHours > 0 ? Fmt.Dec((decimal)s.DailyGoalHours) : "", "Off");
+        dgoal.LostFocus += (_, _) =>
+        {
+            if (dgoal.Text.Trim().Length == 0) { s.DailyGoalHours = 0; State.Save(); return; }
+            if (Ui.TryDec(dgoal.Text, out var g) && g is > 0 and <= 24) { s.DailyGoalHours = (double)g; State.Save(); }
+            else dgoal.Text = s.DailyGoalHours > 0 ? Fmt.Dec((decimal)s.DailyGoalHours) : "";
+        };
+        t.Children.Add(Pair(Ui.Field("WEEKLY GOAL (HOURS)", goal, 0), Ui.Field("DAILY GOAL (HOURS)", dgoal, 0)));
         root.Children.Add(Block(t));
 
         // ---------- Billing defaults ----------
@@ -174,6 +181,33 @@ public class SettingsPage : PageBase
         sr.Children.Add(Ui.Text("The global shortcut starts or pauses the timer from any app. The end-of-day check warns you once if a timer is still running at that time.", 12, "FaintBrush", wrap: true).WithMargin(0, 0, 0, 12));
         sr.Children.Add(startup);
         root.Children.Add(Block(sr));
+
+        // ---------- Focus & activity ----------
+        var fMin = Ui.Combo(new[] { 15, 20, 25, 30, 45, 50, 60, 90 }.Select(n => Loc.F("{0} minutes", n)).ToList(), Loc.F("{0} minutes", s.FocusMinutes));
+        var fVals = new[] { 15, 20, 25, 30, 45, 50, 60, 90 };
+        if (fMin.SelectedIndex < 0) fMin.SelectedIndex = 2;
+        fMin.SelectionChanged += (_, _) => { s.FocusMinutes = fVals[Math.Max(0, fMin.SelectedIndex)]; State.Save(); };
+        var bVals = new[] { 3, 5, 10, 15, 20 };
+        var bMin = Ui.Combo(bVals.Select(n => Loc.F("{0} minutes", n)).ToList(), Loc.F("{0} minutes", s.BreakMinutes));
+        if (bMin.SelectedIndex < 0) bMin.SelectedIndex = 1;
+        bMin.SelectionChanged += (_, _) => { s.BreakMinutes = bVals[Math.Max(0, bMin.SelectedIndex)]; State.Save(); };
+        var track = Ui.Check("Track which app I'm using, to suggest entries I forgot", s.TrackActivity);
+        var titles = Ui.Check("Include window titles (e.g. document names)", s.ActivityTitles);
+        titles.IsEnabled = s.TrackActivity;
+        track.Click += (_, _) =>
+        {
+            s.TrackActivity = track.IsChecked == true; titles.IsEnabled = s.TrackActivity;
+            if (!s.TrackActivity) ActivityRecorder.Clear();   // turning it off also forgets what was recorded
+            State.Save();
+        };
+        titles.Click += (_, _) => { s.ActivityTitles = titles.IsChecked == true; State.Save(); };
+        var fa = new StackPanel();
+        fa.Children.Add(Section("Focus & activity", "Focus rounds remind you to take breaks. Activity tracking is off unless you turn it on."));
+        fa.Children.Add(Pair(Ui.Field("FOCUS ROUND", fMin), Ui.Field("BREAK", bMin)));
+        fa.Children.Add(track.WithMargin(0, 0, 0, 6));
+        fa.Children.Add(titles.WithMargin(26, 0, 0, 8));
+        fa.Children.Add(Ui.Text(Loc.F("Every 30 seconds Tempo notes the app in front. It never records keystrokes or screenshots, the notes stay on this PC, and they're deleted after {0} days. Turning this off deletes them straight away.", s.ActivityKeepDays), 12, "FaintBrush", wrap: true));
+        root.Children.Add(Block(fa));
 
         // ---------- Automatic backups ----------
         var bk = new StackPanel();

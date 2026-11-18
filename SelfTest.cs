@@ -204,6 +204,52 @@ public static class SelfTest
         EntryToolsTests();
         Updates();
         Hardening();
+        TrackingTests();
+    }
+
+    // ---------- phase 7: timeline, focus, activity ----------
+    static void TrackingTests()
+    {
+        var t0 = new DateTime(2026, 11, 18, 14, 0, 0, DateTimeKind.Utc);
+        Session At(double fromH, double toH, string pid = "p1") => new() { ProjectId = pid, StartedAtUtc = t0.AddHours(fromH), EndedAtUtc = t0.AddHours(toH), DurationMilliseconds = (long)((toH - fromH) * 3_600_000) };
+        var a = At(0, 2); var b = At(1.5, 3); var c = At(3, 4); var d = At(6, 7);
+        var ov = Timeline.Overlaps(new[] { c, a, d, b });
+        Check("overlaps: finds entries that share time, not ones that just touch", ov.Count == 1 && ov[0].A == a && ov[0].B == b && Timeline.OverlappingIds(new[] { a, b, c, d }).SetEquals(new[] { a.Id, b.Id }));
+        var gaps = Timeline.Gaps(new[] { a, b, c, d }, t0, t0.AddHours(8), 15);
+        Check("gaps: untracked stretches inside the window", gaps.Count == 2 && gaps[0].StartUtc == t0.AddHours(4) && gaps[0].EndUtc == t0.AddHours(6) && gaps[1].StartUtc == t0.AddHours(7) && gaps[1].EndUtc == t0.AddHours(8), string.Join(",", gaps.Select(g => $"{g.StartUtc:HH:mm}-{g.EndUtc:HH:mm}")));
+        Check("gaps: shorter than the minimum are ignored", Timeline.Gaps(new[] { At(0, 1), At(1.1, 2) }, t0, t0.AddHours(2), 15).Count == 0);
+
+        State.Data = new Workspace();
+        var proj = new Project { Id = "p1", Name = "One", HourlyRate = 80, Billable = false };
+        State.Data.Projects.Add(proj);
+        var filled = Timeline.FillGap(gaps[0], proj, "Catch-up");
+        Check("fill gap adds an entry for exactly that stretch", filled != null && State.Data.Sessions.Contains(filled) && filled.DurationMilliseconds == 7_200_000 && filled.HourlyRate == 80 && !filled.Billable && filled.Task == "Catch-up" && filled.Source == "manual");
+
+        var fs = new DateTime(2026, 11, 18, 9, 0, 0, DateTimeKind.Utc);
+        var f1 = Focus.At(fs, fs.AddMinutes(10), 25, 5);
+        var f2 = Focus.At(fs, fs.AddMinutes(27), 25, 5);
+        var f3 = Focus.At(fs, fs.AddMinutes(31), 25, 5);
+        Check("focus: rounds of work then break",
+            f1 == (FocusPhase.Focus, TimeSpan.FromMinutes(15), 1) && f2 == (FocusPhase.Break, TimeSpan.FromMinutes(3), 1) && f3 == (FocusPhase.Focus, TimeSpan.FromMinutes(24), 2), $"{f1} {f2} {f3}");
+
+        var s0 = new DateTime(2026, 11, 18, 15, 0, 0, DateTimeKind.Utc);
+        var samples = new List<ActivitySample>();
+        for (int i = 0; i < 80; i++) samples.Add(new(s0.AddSeconds(30 * i), "Figma", i % 3 == 0 ? "Logo v2" : "Brand board"));      // 15:00 - 15:40
+        for (int i = 0; i < 4; i++) samples.Add(new(s0.AddMinutes(40).AddSeconds(30 * i), "Slack", "general"));                    // 2 min of Slack
+        for (int i = 0; i < 60; i++) samples.Add(new(s0.AddMinutes(60).AddSeconds(30 * i), "Code", "Tempo"));                      // 16:00 - 16:30, already tracked
+        var tracked = new Session { ProjectId = "p1", StartedAtUtc = s0.AddMinutes(55), EndedAtUtc = s0.AddMinutes(95), DurationMilliseconds = 2_400_000 };
+        var sug = Activity.Suggest(samples, new[] { tracked }, TimeSpan.FromSeconds(30), 10);
+        var adir = System.IO.Path.Combine(OutDir, "activity-test");
+        if (System.IO.Directory.Exists(adir)) System.IO.Directory.Delete(adir, true);
+        ActivityStore.Append(adir, new(s0, "Figma", "Logo \"v2\" | done"));
+        ActivityStore.Append(adir, new(s0.AddDays(1), "Code", "Tempo"));
+        var loaded = ActivityStore.Load(adir, s0.AddMinutes(-1), s0.AddMinutes(1));
+        Check("activity store: saves and reads back samples in a time range", loaded.Count == 1 && loaded[0] == new ActivitySample(s0, "Figma", "Logo \"v2\" | done"));
+        System.IO.File.WriteAllText(System.IO.Path.Combine(adir, "notes.txt"), "keep");
+        var pruned = ActivityStore.Prune(adir, 0, s0.AddDays(1).AddHours(6));   // 19 Nov, 21:00 UTC
+        Check("activity store: old days are deleted, other files kept", pruned == 1 && System.IO.Directory.GetFiles(adir).Length == 2 && ActivityStore.Load(adir, s0.AddDays(1).AddMinutes(-1), s0.AddDays(1).AddMinutes(1)).Count == 1,
+            $"pruned {pruned}, files {string.Join(",", System.IO.Directory.GetFiles(adir).Select(System.IO.Path.GetFileName))}");
+        Check("activity: long untracked app stretches become suggestions", sug.Count == 1 && sug[0].App == "Figma" && sug[0].Title == "Brand board" && sug[0].StartUtc == s0 && sug[0].EndUtc == s0.AddMinutes(40), string.Join(" | ", sug));
     }
 
     // ---------- security review fixes ----------

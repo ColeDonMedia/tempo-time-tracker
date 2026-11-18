@@ -27,7 +27,9 @@ public class OverviewPage : PageBase
         var week = State.WeekMs(now);
         var metrics = new UniformGrid { Columns = 4, Margin = new Thickness(0, 0, 0, 18) };
         void Add(Border b, bool last = false) { b.Margin = new Thickness(0, 0, last ? 0 : 14, 0); metrics.Children.Add(b); }
-        Add(Ui.Metric("Tracked today", Fmt.Hm(State.DayMs(now)), State.Running ? "timer running now" : "so far today"));
+        var dayGoal = d.Settings.DailyGoalHours;
+        Add(Ui.Metric("Tracked today", Fmt.Hm(State.DayMs(now)),
+            dayGoal > 0 ? Loc.F("of {0}h daily goal", dayGoal.ToString("0.#")) : State.Running ? "timer running now" : "so far today"));
         Add(Ui.Metric("This week", Fmt.Hm(week), Loc.F("{0} billable", Fmt.Money(State.WeekEarned(now))), "GoodBrush"));
         Add(Ui.Metric("Unbilled", Fmt.Money(State.Unbilled), "not yet invoiced", "WarnBrush"));
         Add(Ui.Metric("Active projects", State.ActiveProjects.Count().ToString(), "clients & brands"), true);
@@ -134,6 +136,17 @@ public class OverviewPage : PageBase
             Grid.SetColumn(stop, 1); btns.Children.Add(stop);
         }
         sp.Children.Add(btns);
+        var st = d.Settings;
+        var focusBtn = Ui.Btn(FocusMode.On ? "Stop focus rounds" : Loc.F("Focus rounds ({0} / {1} min)", st.FocusMinutes, st.BreakMinutes), () =>
+        {
+            if (!FocusMode.On && !State.Running)
+            {
+                if (combo.SelectedItem is not Project fp) { State.Toast("Choose a project first", true); return; }
+                State.StartTimer(fp.Id, task.Text.Trim());
+            }
+            FocusMode.Toggle();
+        }, "GhostButton", Icons.Bell);
+        sp.Children.Add(focusBtn.Center().WithMargin(0, 8, 0, 0));
         if (!State.HasTimer)
         {
             var earlier = Ui.Btn("Forgot to start? I began earlier…", () =>
@@ -217,6 +230,14 @@ public class OverviewPage : PageBase
         if (clock == null) return;
         var ms = State.ElapsedMs;
         clock.Text = Fmt.Clock(ms);
+        if (FocusMode.Now is { } f)
+        {
+            // during focus rounds the ring shows the round's progress instead of the minute hand
+            var total = TimeSpan.FromMinutes(f.Phase == FocusPhase.Focus ? State.Data.Settings.FocusMinutes : State.Data.Settings.BreakMinutes);
+            stateLbl.Text = Loc.F(f.Phase == FocusPhase.Focus ? "FOCUS ROUND {0} · {1} LEFT" : "BREAK · {1} LEFT", f.Round, $"{(int)f.Left.TotalMinutes}:{f.Left.Seconds:00}");
+            UpdateRing(1 - f.Left / total);
+            return;
+        }
         stateLbl.Text = Loc.T(State.Running ? "TIMER RUNNING" : State.HasTimer ? "TIMER PAUSED" : "READY WHEN YOU ARE");
         UpdateRing(State.HasTimer ? (ms % 60000) / 60000.0 : 0);
     }

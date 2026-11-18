@@ -92,6 +92,12 @@ public class AppSettings
     public string BackupFolder { get; set; } = "";
     public int BackupKeep { get; set; } = 14;
     public bool CheckUpdates { get; set; }
+    public double DailyGoalHours { get; set; }              // 0 = no daily goal
+    public int FocusMinutes { get; set; } = 25;
+    public int BreakMinutes { get; set; } = 5;
+    public bool TrackActivity { get; set; }                // opt-in: sample the app in front every 30 s
+    public bool ActivityTitles { get; set; } = true;       // also keep window titles (else app names only)
+    public int ActivityKeepDays { get; set; } = 14;
 }
 
 public class InvoiceLine

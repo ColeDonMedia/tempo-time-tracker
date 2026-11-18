@@ -49,6 +49,14 @@ public static class DemoData
         }
         d.Expenses.Add(new Expense { ProjectId = "p1", Date = today.AddDays(-4), Description = "Stock photo licence", Amount = 49m });
         d.Expenses.Add(new Expense { ProjectId = "p4", Date = today.AddDays(-2), Description = "Printing: proof set", Amount = 86.50m });
+        // today: one overlap and a gap, so the Day view has something to show
+        Session Today(string pid, string task, double fromH, double toH, decimal rate) => new()
+        {
+            ProjectId = pid, Task = task, StartedAtUtc = State.ToUtc(today.AddHours(fromH)), EndedAtUtc = State.ToUtc(today.AddHours(toH)),
+            DurationMilliseconds = (long)((toH - fromH) * 3_600_000), HourlyRate = rate, Source = "manual",
+        };
+        d.Sessions.Add(Today("p2", "Client call", 10.25, 11, 95));
+        d.Sessions.Add(Today("p1", "Logo refinements", 13, 14.5, 120));
         foreach (var s in d.Sessions.Where(x => x.Task == "Client call")) s.Billable = false;
         d.Invoices[1].Payments.Add(new Payment { DateUtc = DateTime.UtcNow.AddDays(-10), Amount = 300m, Note = "Deposit" });
         d.Invoices[1].PayLink = "https://pay.example.com/invoice/INV-2026-002";

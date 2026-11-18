@@ -133,7 +133,7 @@ public partial class App : Application
             enc.Save(fs);
         }
         // the Entries page's other two tabs
-        foreach (var (tabName, file) in new[] { ("Timesheet", "timesheet"), ("Expenses", "expenses") })
+        foreach (var (tabName, file) in new[] { ("Day", "day"), ("Timesheet", "timesheet"), ("Expenses", "expenses") })
         {
             EntriesPage.SetTab(tabName);
             win.Navigate("Entries");
