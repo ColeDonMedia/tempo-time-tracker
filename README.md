@@ -57,7 +57,7 @@ Single-file release build:
 dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
 ```
 
-Pushing a tag such as `v2.4.0` makes GitHub Actions build the exe and attach it to a release (see `.github/workflows/build.yml`).
+Pushing a tag such as `v2.5.0` makes GitHub Actions build the exe and attach it to a release (see `.github/workflows/build.yml`).
 
 ## Your data
 

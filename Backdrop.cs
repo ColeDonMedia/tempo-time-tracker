@@ -20,6 +20,10 @@ public static class Backdrop
         if (h == IntPtr.Zero) return;
         int dark = App.IsDark ? 1 : 0;
         DwmSetWindowAttribute(h, 20, ref dark, 4);                    // immersive dark title bar
+        int noColor = unchecked((int)0xFFFFFFFE);                        // DWMWA_COLOR_NONE: caption shows the backdrop, not the accent colour
+        DwmSetWindowAttribute(h, 35, ref noColor, 4);
+        int text = App.IsDark ? 0x00FAF4EE : 0x0033220E;              // caption text colour, COLORREF 0x00BBGGRR
+        DwmSetWindowAttribute(h, 36, ref text, 4);
         int round = 2;                                                // DWMWCP_ROUND: soft corners, also on borderless windows
         DwmSetWindowAttribute(h, 33, ref round, 4);
 

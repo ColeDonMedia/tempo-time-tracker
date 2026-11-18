@@ -214,6 +214,10 @@ public static partial class Loc
         "Switching projects saves the running session and starts the new one.|Cambiar de proyecto guarda la sesión en curso y empieza la nueva.|Changer de projet enregistre la session en cours et démarre la nouvelle.|Beim Wechsel wird die laufende Sitzung gespeichert und die neue gestartet.|Trocar de projeto salva a sessão em andamento e inicia a nova.|Cambiando progetto la sessione in corso viene salvata e ne parte una nuova.|プロジェクトを切り替えると、実行中のセッションを保存して新しく開始します。|切换项目会保存当前记录并开始新的计时。|프로젝트를 바꾸면 진행 중인 세션을 저장하고 새로 시작합니다.",
         "Now tracking {0}|Ahora registrando {0}|Suivi en cours : {0}|Jetzt erfasst: {0}|Registrando agora: {0}|Ora in tracciamento: {0}|{0} を記録中|正在为 {0} 计时|{0} 기록 중",
         "Switch between full and mini view|Alternar entre vista completa y mini|Basculer entre vue complète et mini|Zwischen Voll- und Mini-Ansicht wechseln|Alternar entre visão completa e mini|Passa tra vista completa e mini|通常表示とミニ表示を切り替え|在完整视图与迷你视图间切换|전체 보기와 미니 보기 전환",
+        "Minimize|Minimizar|Réduire|Minimieren|Minimizar|Riduci a icona|最小化|最小化|최소화",
+        "Maximize|Maximizar|Agrandir|Maximieren|Maximizar|Ingrandisci|最大化|最大化|최대화",
+        "Restore down|Restaurar|Restaurer|Wiederherstellen|Restaurar|Ripristina|元に戻す|还原|이전 크기로",
+        "Close|Cerrar|Fermer|Schließen|Fechar|Chiudi|閉じる|关闭|닫기",
         "Tempo could not save your data: |Tempo no pudo guardar tus datos: |Tempo n'a pas pu enregistrer vos données : |Tempo konnte deine Daten nicht speichern: |O Tempo não conseguiu salvar seus dados: |Tempo non è riuscito a salvare i dati: |Tempo はデータを保存できませんでした: |Tempo 无法保存你的数据:|Tempo가 데이터를 저장하지 못했습니다: ",
     };
 }

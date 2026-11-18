@@ -166,7 +166,7 @@ public static class Ui
         row.Children.Add(Text(Loc.T(label).ToUpperInvariant(), 11, "MutedBrush", FontWeights.SemiBold));
         sp.Children.Add(row);
         sp.Children.Add(Text(value, 25, "TextBrush", FontWeights.SemiBold).WithMargin(0, 10, 0, 2));
-        sp.Children.Add(Text(Loc.T(sub), 12.5, "MutedBrush"));
+        sp.Children.Add(Text(Loc.T(sub), 12.5, "MutedBrush", wrap: true));
         return Card(sp, 20);
     }
 

@@ -36,6 +36,13 @@ public partial class MainWindow : Window
         Icon = Ui.LogoBitmap(64);
         LogoHost.Content = Ui.Logo(40);
         SourceInitialized += (_, _) => Backdrop.Apply(this);
+        StateChanged += (_, _) =>
+        {
+            MaxGlyph.Data = Geometry.Parse(WindowState == WindowState.Maximized ? "M2.5,2.5 V0.5 H9.5 V7.5 H7.5 M0.5,2.5 H7.5 V9.5 H0.5 Z" : "M0.5,0.5 H9.5 V9.5 H0.5 Z");
+            MaxBtn.ToolTip = Loc.T(WindowState == WindowState.Maximized ? "Restore down" : "Maximize");
+            var b = SystemParameters.WindowResizeBorderThickness;
+            RootGrid.Margin = WindowState == WindowState.Maximized ? new Thickness(b.Left + 2, b.Top + 2, b.Right + 2, b.Bottom + 2) : new Thickness(0);
+        };
 
         int i = 1;
         foreach (var (key, title, icon) in Pages)
@@ -80,8 +87,15 @@ public partial class MainWindow : Window
         UpdateMini();
     }
 
+    void Min_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
+    void Max_Click(object sender, RoutedEventArgs e) { if (WindowState == WindowState.Maximized) SystemCommands.RestoreWindow(this); else SystemCommands.MaximizeWindow(this); }
+    void Close_Click(object sender, RoutedEventArgs e) => SystemCommands.CloseWindow(this);
+
     void ApplyChrome()
     {
+        MinBtn.ToolTip = Loc.T("Minimize");
+        MaxBtn.ToolTip = Loc.T(WindowState == WindowState.Maximized ? "Restore down" : "Maximize");
+        CloseBtn.ToolTip = Loc.T("Close");
         Tagline.Text = Loc.T("Studio time tracker");
         WorkspaceLabel.Text = Loc.T("WORKSPACE");
         MiniTimer.ToolTip = Loc.T("Open timer");
