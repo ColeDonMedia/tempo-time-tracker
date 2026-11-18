@@ -10,6 +10,25 @@ public static class SelfTest
 {
     static readonly StringBuilder Log = new();
     static int fails;
+    public static List<(string Text, string File)> QrFiles = new();
+    public static string OutDir = "";
+
+    static string SaveQr(bool[,] m, int n)
+    {
+        int size = m.GetLength(0), scale = 8, quiet = 4, px = (size + quiet * 2) * scale;
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawRectangle(System.Windows.Media.Brushes.White, null, new System.Windows.Rect(0, 0, px, px));
+            for (int y = 0; y < size; y++) for (int x = 0; x < size; x++)
+                if (m[y, x]) dc.DrawRectangle(System.Windows.Media.Brushes.Black, null, new System.Windows.Rect((x + quiet) * scale, (y + quiet) * scale, scale, scale));
+        }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(px, px, 96, 96, System.Windows.Media.PixelFormats.Pbgra32); rtb.Render(dv);
+        var enc = new System.Windows.Media.Imaging.PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+        var file = System.IO.Path.Combine(OutDir, $"qr-{n}.png");
+        using var fs = System.IO.File.Create(file); enc.Save(fs);
+        return file;
+    }
 
     static void Check(string name, bool ok, string? detail = null)
     {
@@ -19,10 +38,12 @@ public static class SelfTest
 
     public static void Run(string path)
     {
+        OutDir = System.IO.Path.GetDirectoryName(path) ?? "";
         try { Tests(); }
         catch (Exception ex) { Check("no exception", false, ex.ToString()); }
         Log.AppendLine(fails == 0 ? "ALL PASSED" : $"{fails} FAILED");
         System.IO.File.WriteAllText(path, Log.ToString());
+        System.IO.File.WriteAllLines(System.IO.Path.Combine(OutDir, "qr-manifest.txt"), QrFiles.Select(q => q.File + "	" + q.Text));
     }
 
     static Session S(string pid, double hours, decimal rate, bool billable = true, int daysAgo = 0) => new()
@@ -94,6 +115,16 @@ public static class SelfTest
         Check("balance = total + late fee - payments", i2.Balance == 70m, i2.Balance.ToString());
         i2.Status = "Void";
         Check("void invoices owe nothing", i2.Balance == 0m);
+
+        // ---------- QR code ----------
+        QrFiles = new List<(string Text, string File)>();
+        foreach (var txt in new[] { "https://pay.example.com/i/1", "https://pay.example.com/invoice/INV-2026-003?amount=1129.05&ref=ABC123", "https://pay.example.com/checkout?invoice=INV-2026-003&client=Orbit+Labs&amount=1129.05&currency=USD&ref=ABC123XYZ", "https://pay.example.com/checkout?invoice=INV-2026-003&client=Orbit+Labs+Studio&project=Brand+identity+refresh&amount=1129.05&currency=USD&ref=ABC123XYZ&note=thank+you", "https://pay.example.com/checkout?invoice=INV-2026-003&client=Orbit+Labs+Studio&project=Brand+identity+refresh&amount=1129.05&currency=USD&ref=ABC123XYZ&n=thanks" })
+        {
+            var qm = QrCode.Encode(txt);
+            Check($"QR encodes {txt.Length}-char text", qm != null && qm.GetLength(0) >= 21);
+            if (qm != null) QrFiles.Add((txt, SaveQr(qm, QrFiles.Count)));
+        }
+        Check("QR refuses text that is too long", QrCode.Encode(new string('x', 300)) == null);
 
         // ---------- reports ----------
         State.Data = new Workspace();

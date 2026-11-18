@@ -34,6 +34,7 @@ public sealed class PdfWriter
         internal readonly StringBuilder C = new();
         internal readonly HashSet<Font> Fonts = new();
         internal readonly HashSet<Img> Images = new();
+        internal readonly List<(double X, double Top, double W, double H, string Url)> Links = new();
         public double Width { get; }
         public double Height { get; }
         internal Page(PdfWriter d, double w, double h) { Doc = d; Width = w; Height = h; }
@@ -63,6 +64,13 @@ public sealed class PdfWriter
 
         public void Line(double x1, double y1, double x2, double y2, double width, Color color) =>
             C.Append($"{Col(color).Replace(' ', ' ')} RG {N(width)} w {N(x1)} {N(Height - y1)} m {N(x2)} {N(Height - y2)} l S\n");
+
+        /// <summary>Filled rectangle (top-down coordinates).</summary>
+        public void Rect(double x, double top, double w, double h, Color color) =>
+            C.Append($"{Col(color)} rg {N(x)} {N(Height - top - h)} {N(w)} {N(h)} re f" + "\n");
+
+        /// <summary>Makes an area of the page a clickable web link.</summary>
+        public void Link(double x, double top, double w, double h, string url) => Links.Add((x, top, w, h, url));
 
         public void Image(Img img, double x, double top, double w, double h)
         {
@@ -211,6 +219,7 @@ public sealed class PdfWriter
         var usedImages = images.Where(i => pages.Any(p => p.Images.Contains(i))).ToList();
         var imgNums = usedImages.ToDictionary(i => i, i => (img: Alloc(), mask: i.Alpha != null ? Alloc() : 0));
         var pageNums = pages.Select(_ => (page: Alloc(), content: Alloc())).ToList();
+        var linkNums = pages.Select(p => p.Links.Select(_ => Alloc()).ToList()).ToList();
 
         var off = new long[next];
         void Begin(int n) { off[n] = ms.Position; W($"{n} 0 obj\n"); }
@@ -262,7 +271,14 @@ public sealed class PdfWriter
             var p = pages[i];
             var fonts = string.Join(" ", p.Fonts.Select(f => $"/{f.Name} {fontNums[f].type0} 0 R"));
             var xo = string.Join(" ", p.Images.Select(im => $"/{im.Name} {imgNums[im].img} 0 R"));
-            Obj(pageNums[i].page, $"<< /Type /Page /Parent {pagesObj} 0 R /MediaBox [0 0 {p.Width.ToString("0.##", CultureInfo.InvariantCulture)} {p.Height.ToString("0.##", CultureInfo.InvariantCulture)}] /Resources << /Font << {fonts} >> /XObject << {xo} >> >> /Contents {pageNums[i].content} 0 R >>");
+            var annots = linkNums[i].Count > 0 ? " /Annots [" + string.Join(" ", linkNums[i].Select(n => n + " 0 R")) + "]" : "";
+            for (int k = 0; k < p.Links.Count; k++)
+            {
+                var (lx, lt, lw, lh, url) = p.Links[k];
+                string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+                Obj(linkNums[i][k], $"<< /Type /Annot /Subtype /Link /Rect [{F(lx)} {F(p.Height - lt - lh)} {F(lx + lw)} {F(p.Height - lt)}] /Border [0 0 0] /A << /S /URI /URI ({Esc(url)}) >> >>");
+            }
+            Obj(pageNums[i].page, $"<< /Type /Page /Parent {pagesObj} 0 R /MediaBox [0 0 {p.Width.ToString("0.##", CultureInfo.InvariantCulture)} {p.Height.ToString("0.##", CultureInfo.InvariantCulture)}] /Resources << /Font << {fonts} >> /XObject << {xo} >> >> /Contents {pageNums[i].content} 0 R{annots} >>");
             Stream(pageNums[i].content, "/Filter /FlateDecode", Z(Encoding.Latin1.GetBytes(p.C.ToString())));
         }
 
