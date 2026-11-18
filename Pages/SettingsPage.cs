@@ -226,6 +226,35 @@ public class SettingsPage : PageBase
         fa.Children.Add(Ui.Text(Loc.F("Every 30 seconds Tempo notes the app in front. It never records keystrokes or screenshots, the notes stay on this PC, and they're deleted after {0} days. Turning this off deletes them straight away.", s.ActivityKeepDays), 12, "FaintBrush", wrap: true));
         root.Children.Add(Block(fa));
 
+        // ---------- Sync & team ----------
+        var sy = new StackPanel();
+        sy.Children.Add(Section("Sync & team", "Use Tempo on several PCs, or share projects with a teammate, through a folder you both sync (OneDrive, Dropbox, Google Drive or a network share). No account or server needed."));
+        var me = Ui.Input(s.MemberName, "e.g. Sam");
+        me.LostFocus += (_, _) => { s.MemberName = me.Text.Trim(); State.Save(); };
+        var syncText = Ui.Text(string.IsNullOrEmpty(s.SyncFolder) ? Loc.T("Off: no folder chosen") : s.SyncFolder, 13, "MutedBrush");
+        syncText.TextTrimming = TextTrimming.CharacterEllipsis;
+        sy.Children.Add(Pair(Ui.Field("YOUR NAME ON SHARED ENTRIES", me), Ui.Field("SYNC FOLDER", syncText)));
+        var syRow = new WrapPanel();
+        syRow.Children.Add(Ui.Btn("Choose folder…", () =>
+        {
+            var dlg = new Microsoft.Win32.OpenFolderDialog { Title = Loc.T("Choose a sync folder") };
+            if (dlg.ShowDialog() != true) return;
+            if (BackupFolderClash(dlg.FolderName)) { State.Toast("Use a different folder from your backups.", true); return; }
+            s.SyncFolder = dlg.FolderName; State.Save();
+            var r = SyncService.Run();
+            State.Toast(r != null ? Loc.F("Synced: {0} changes received", r.Received + r.Removed) : "That folder can't be written to.", r == null);
+            Build();
+        }, "GlassButton", Icons.Folder).WithMargin(0, 0, 8, 8));
+        if (!string.IsNullOrEmpty(s.SyncFolder))
+        {
+            syRow.Children.Add(Ui.Btn("Sync now", () => { var r = SyncService.Run(); State.Toast(r != null ? Loc.F("Synced: {0} changes received", r.Received + r.Removed) : "That folder can't be written to.", r == null); Build(); }, "GlassButton", Icons.Undo).WithMargin(0, 0, 8, 8));
+            syRow.Children.Add(Ui.Btn("Turn off", () => { s.SyncFolder = ""; State.Save(); Build(); }, "GlassButton").WithMargin(0, 0, 8, 8));
+        }
+        sy.Children.Add(syRow);
+        if (SyncService.LastRunUtc is DateTime lr) sy.Children.Add(Ui.Text(Loc.F("Last synced: {0}", Fmt.Time(State.ToLocal(lr))), 12, "FaintBrush"));
+        sy.Children.Add(Ui.Text("Each PC writes its own file into the folder and reads the others, every 2 minutes. If the same entry is changed in two places, the newest change wins. Settings, your billing profile and a running timer stay on each PC.", 12, "FaintBrush", wrap: true).WithMargin(0, 6, 0, 0));
+        root.Children.Add(Block(sy));
+
         // ---------- Automatic backups ----------
         var bk = new StackPanel();
         bk.Children.Add(Section("Automatic backups", "Once a day, Tempo copies your data into a folder you choose, such as a OneDrive or Dropbox folder."));
@@ -312,6 +341,10 @@ public class SettingsPage : PageBase
         if (zoneClock == null) return;
         zoneClock.Text = Loc.F("Current time there: {0}  ·  UTC{1}", Fmt.Time(State.NowLocal), State.OffsetText(DateTime.UtcNow));
     }
+
+    /// <summary>Backups prune tempo-backup-*.json and sync writes tempo-sync-*.json; sharing a folder is harmless but confusing, so keep them apart.</summary>
+    static bool BackupFolderClash(string folder) =>
+        !string.IsNullOrEmpty(State.Data.Settings.BackupFolder) && System.IO.Path.GetFullPath(folder).TrimEnd('\\').Equals(System.IO.Path.GetFullPath(State.Data.Settings.BackupFolder).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
 
     static Border Block(UIElement c) { var b = Ui.Card(c); b.Margin = new Thickness(0, 0, 0, 18); return b; }
 

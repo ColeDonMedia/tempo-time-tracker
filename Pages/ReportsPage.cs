@@ -18,7 +18,7 @@ public class ReportsPage : PageBase
     static string groupBy = "Project";
 
     static readonly string[] Presets = { "This week", "Last week", "This month", "Last month", "Last 30 days", "This year", "All time", "Custom" };
-    static readonly string[] Groups = { "Project", "Client", "Task", "Tag", "Day", "Week", "Month" };
+    static readonly string[] Groups = { "Project", "Client", "Member", "Task", "Tag", "Day", "Week", "Month" };
 
     ReportFilter Filter()
     {

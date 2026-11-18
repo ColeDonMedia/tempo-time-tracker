@@ -90,6 +90,7 @@ public partial class MainWindow : Window
             State.Save();
             if (State.Data.Settings.CloseToTray && !tray!.Quitting) { e.Cancel = true; Hide(); return; }
             BackupService.RunNow();
+            SyncService.Run();   // publish the last changes before quitting
         };
         Closed += (_, _) => { mini?.Shutdown(); tray?.Dispose(); hotkey?.Dispose(); };
         Navigate("Overview");
@@ -115,6 +116,7 @@ public partial class MainWindow : Window
     }
 
     HotkeyService? hotkey;
+    DateTime lastSync = DateTime.MinValue;   // first tick syncs straight away
     Button? searchBtn;
     DateTime lastBackupCheck = DateTime.UtcNow;
     DateTime? notTrackingSince, lastReminder, lastEndOfDayWarned;
@@ -293,6 +295,7 @@ public partial class MainWindow : Window
         if ((DateTime.UtcNow - lastBackupCheck).TotalHours >= 6) { lastBackupCheck = DateTime.UtcNow; BackupService.RunIfDue(); }
         if (DateTime.UtcNow.Second % 15 == 0) CheckReminders();
         if (FocusMode.Tick() is string focusMsg) Notify(focusMsg);
+        if (!string.IsNullOrEmpty(State.Data.Settings.SyncFolder) && (DateTime.UtcNow - lastSync).TotalMinutes >= 2) { lastSync = DateTime.UtcNow; SyncService.Run(); }
         ActivityRecorder.Tick();
         if (State.Running && State.ElapsedMs > 8 * 3600_000L && !longWarned)
         {

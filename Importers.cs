@@ -107,7 +107,7 @@ public static class IcsImport
             State.Data.Sessions.Add(new Session
             {
                 ProjectId = p.Id, Task = e.Summary, StartedAtUtc = e.StartUtc, EndedAtUtc = e.EndUtc, DurationMilliseconds = ms,
-                HourlyRate = p.HourlyRate, Billable = p.Billable, Source = "calendar",
+                HourlyRate = p.HourlyRate, Billable = p.Billable, Source = "calendar", Member = State.Data.Settings.MemberName,
             });
             added++;
         }
@@ -414,7 +414,7 @@ public static class CsvImport
             newSessions.Add(new Session
             {
                 ProjectId = proj.Id, Task = r.Task, StartedAtUtc = startUtc, EndedAtUtc = startUtc.AddMilliseconds(r.DurationMs), DurationMilliseconds = r.DurationMs,
-                HourlyRate = r.Rate ?? proj.HourlyRate, Billable = r.Billable, Tags = r.Tags.ToList(), Source = "import",
+                HourlyRate = r.Rate ?? proj.HourlyRate, Billable = r.Billable, Tags = r.Tags.ToList(), Source = "import", Member = State.Data.Settings.MemberName,
             });
         }
         d.Clients.AddRange(newClients); d.Projects.AddRange(newProjects); d.Sessions.AddRange(newSessions);

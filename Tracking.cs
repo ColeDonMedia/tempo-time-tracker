@@ -42,7 +42,7 @@ public static class Timeline
         var s = new Session
         {
             ProjectId = p.Id, Task = task.Trim(), StartedAtUtc = g.StartUtc, EndedAtUtc = g.EndUtc, DurationMilliseconds = ms,
-            HourlyRate = p.HourlyRate, Billable = p.Billable, Source = "manual",
+            HourlyRate = p.HourlyRate, Billable = p.Billable, Source = "manual", Member = State.Data.Settings.MemberName,
         };
         State.Data.Sessions.Add(s);
         State.Notify();

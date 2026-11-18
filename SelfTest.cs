@@ -206,6 +206,85 @@ public static class SelfTest
         Hardening();
         TrackingTests();
         MoneyTests();
+        SyncTests();
+    }
+
+    // ---------- phase 9: folder sync between devices / team members ----------
+    static void SyncTests()
+    {
+        var t = new DateTime(2026, 11, 18, 12, 0, 0, DateTimeKind.Utc);
+        Workspace NewWs() { var w = new Workspace(); w.Projects.Add(new Project { Id = "p1", Name = "Shared", HourlyRate = 100 }); return w; }
+        var a = NewWs(); var b = NewWs();
+        var sa = new SyncState(); var sb = new SyncState();
+
+        // A logs an entry, publishes; B picks it up
+        a.Sessions.Add(new Session { Id = "s1", ProjectId = "p1", Task = "From A", DurationMilliseconds = 3_600_000, StartedAtUtc = t, EndedAtUtc = t.AddHours(1), Member = "Ana" });
+        var fa = Sync.Step(a, sa, Array.Empty<SyncFile>(), "devA", "Ana", t).Own;
+        var rb = Sync.Step(b, sb, new[] { fa }, "devB", "Ben", t.AddMinutes(1));
+        Check("sync: a new entry on one device appears on the other", b.Sessions.Any(s => s.Id == "s1" && s.Task == "From A" && s.Member == "Ana") && rb.Received >= 1, $"received {rb.Received}");
+        Check("sync: records both devices already share aren't duplicated", b.Projects.Count == 1);
+
+        // B edits it later; A gets the edit
+        b.Sessions.First(s => s.Id == "s1").Task = "Edited by B";
+        var fb = Sync.Step(b, sb, new[] { fa }, "devB", "Ben", t.AddMinutes(5)).Own;
+        Sync.Step(a, sa, new[] { fb }, "devA", "Ana", t.AddMinutes(6));
+        Check("sync: the newest edit wins", a.Sessions.Single(s => s.Id == "s1").Task == "Edited by B");
+
+        // A changes it again after that: A's newer edit must survive B's older copy
+        a.Sessions.First(s => s.Id == "s1").Task = "A again";
+        fa = Sync.Step(a, sa, new[] { fb }, "devA", "Ana", t.AddMinutes(10)).Own;
+        Check("sync: an older remote copy never overwrites a newer local edit", a.Sessions.Single(s => s.Id == "s1").Task == "A again");
+        Sync.Step(b, sb, new[] { fa }, "devB", "Ben", t.AddMinutes(11));
+        Check("sync: …and it reaches the other device", b.Sessions.Single(s => s.Id == "s1").Task == "A again");
+
+        // B deletes it; the deletion reaches A and isn't undone by A's old copy
+        b.Sessions.RemoveAll(s => s.Id == "s1");
+        fb = Sync.Step(b, sb, new[] { fa }, "devB", "Ben", t.AddMinutes(20)).Own;
+        Check("sync: a deletion isn't brought back by the other device's older copy", b.Sessions.All(s => s.Id != "s1"));
+        var ra = Sync.Step(a, sa, new[] { fb }, "devA", "Ana", t.AddMinutes(21));
+        Check("sync: deletions travel too", a.Sessions.All(s => s.Id != "s1") && ra.Removed == 1);
+
+        // invoice numbers never go backwards
+        a.InvoiceCounter = 3; b.InvoiceCounter = 7;
+        fb = Sync.Step(b, sb, new[] { fa }, "devB", "Ben", t.AddMinutes(30)).Own;
+        Sync.Step(a, sa, new[] { fb }, "devA", "Ana", t.AddMinutes(31));
+        Check("sync: invoice counters take the highest, so numbers aren't reused", a.InvoiceCounter == 7);
+
+        // a stray file from this same device is ignored
+        var self = new SyncFile { DeviceId = "devA", Items = { new SyncItem { Kind = "Session", Id = "zz", StampUtc = t.AddDays(1), Data = System.Text.Json.JsonSerializer.SerializeToElement(new Session { Id = "zz" }) } } };
+        Sync.Step(a, sa, new[] { self }, "devA", "Ana", t.AddMinutes(40));
+        Check("sync: this device's own file isn't read back as someone else's", a.Sessions.All(s => s.Id != "zz"));
+
+        // the real thing: two devices, one shared folder, state saved to disk between runs
+        var shared = System.IO.Path.Combine(OutDir, "sync-shared");
+        if (System.IO.Directory.Exists(shared)) System.IO.Directory.Delete(shared, true);
+        System.IO.Directory.CreateDirectory(shared);
+        string stA = System.IO.Path.Combine(OutDir, "sync-state-a.json"), stB = System.IO.Path.Combine(OutDir, "sync-state-b.json");
+        foreach (var f in new[] { stA, stB }) if (System.IO.File.Exists(f)) System.IO.File.Delete(f);
+        var da = NewWs(); var db = NewWs();
+        da.Sessions.Add(new Session { Id = "d1", ProjectId = "p1", Task = "Disk A", DurationMilliseconds = 60_000, StartedAtUtc = t, EndedAtUtc = t.AddMinutes(1) });
+        SyncService.RunWith(da, shared, stA, "devA", "Ana", t);
+        SyncService.RunWith(db, shared, stB, "devB", "Ben", t.AddMinutes(1));
+        Check("sync folder: one file per device, entries arrive", System.IO.Directory.GetFiles(shared, "tempo-sync-*.json").Length == 2 && db.Sessions.Any(s => s.Id == "d1"));
+        SyncService.RunWith(da, shared, stA, "devA", "Ana", t.AddMinutes(2));   // nothing changed on A
+        db.Sessions.First(s => s.Id == "d1").Task = "Disk B edit";
+        SyncService.RunWith(db, shared, stB, "devB", "Ben", t.AddMinutes(3));
+        SyncService.RunWith(da, shared, stA, "devA", "Ana", t.AddMinutes(4));
+        Check("sync folder: saved state keeps old stamps, so the other device's later edit wins", da.Sessions.Single(s => s.Id == "d1").Task == "Disk B edit");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(shared, "tempo-sync-junk.json"), "{ not json");
+        Check("sync folder: a broken file from another device doesn't stop the sync", SyncService.RunWith(da, shared, stA, "devA", "Ana", t.AddMinutes(5)) != null);
+
+        // team: reports group by member
+        State.Data = new Workspace(); State.Data.Projects.Add(new Project { Id = "p1", Name = "P", HourlyRate = 10 });
+        State.Data.Sessions.Add(new Session { ProjectId = "p1", Member = "Ana", DurationMilliseconds = 3_600_000, StartedAtUtc = t, EndedAtUtc = t.AddHours(1), HourlyRate = 10 });
+        State.Data.Sessions.Add(new Session { ProjectId = "p1", Member = "Ben", DurationMilliseconds = 7_200_000, StartedAtUtc = t, EndedAtUtc = t.AddHours(2), HourlyRate = 10 });
+        State.Data.Sessions.Add(new Session { ProjectId = "p1", Member = "", DurationMilliseconds = 1_800_000, StartedAtUtc = t, EndedAtUtc = t.AddHours(0.5), HourlyRate = 10 });
+        var byMember = ReportEngine.Compute(new ReportFilter { GroupBy = "Member" });
+        Check("team: reports group hours by member", byMember.Rows.Count == 3 && byMember.Rows[0].Label == "Ben" && byMember.Rows[0].Hours == 2m, string.Join(",", byMember.Rows.Select(r => r.Label + "=" + r.Hours)));
+        State.Data.Settings.MemberName = "Ana";
+        State.Data.Timer = new TimerSnapshot { ProjectId = "p1", StartedAtUtc = DateTime.UtcNow.AddMinutes(-5), AccumulatedMilliseconds = 300_000 };
+        var stopped = State.StopTimer();
+        Check("team: entries are stamped with this person's name", stopped?.Member == "Ana");
     }
 
     // ---------- phase 8: profit, currencies, taxes, email ----------

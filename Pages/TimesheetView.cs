@@ -129,7 +129,7 @@ public static class TimesheetView
         {
             if (grid == null)
             {
-                grid = new Session { ProjectId = p.Id, Source = "grid", Task = "Timesheet entry", HourlyRate = p.HourlyRate, Billable = p.Billable };
+                grid = new Session { ProjectId = p.Id, Source = "grid", Member = State.Data.Settings.MemberName, Task = "Timesheet entry", HourlyRate = p.HourlyRate, Billable = p.Billable };
                 d.Sessions.Add(grid);
             }
             var start = State.ToUtc(day.Date.AddHours(9));

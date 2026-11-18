@@ -40,6 +40,7 @@ public class Session
     public bool Billable { get; set; } = true;
     public List<string> Tags { get; set; } = new();
     public string Source { get; set; } = "";              // timer | manual | calendar | import | grid
+    public string Member { get; set; } = "";              // who tracked it (team sync); "" = just you
 }
 
 public class TimerSnapshot
@@ -102,6 +103,9 @@ public class AppSettings
     public decimal DefaultCostRate { get; set; }            // per hour, in the base currency
     /// <summary>How much one unit of a currency is worth in the base currency (CurrencyCode), e.g. "EUR" → 1.08.</summary>
     public Dictionary<string, decimal> ExchangeRates { get; set; } = new();
+    public string SyncFolder { get; set; } = "";             // "" = sync off
+    public string DeviceId { get; set; } = "";
+    public string MemberName { get; set; } = "";             // your name on shared entries
 }
 
 public class TaxLine

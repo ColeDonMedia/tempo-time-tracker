@@ -181,7 +181,8 @@ public class EntriesPage : PageBase
         var ls = State.ToLocal(s.StartedAtUtc); var le = State.ToLocal(s.EndedAtUtc);
         var mid = new StackPanel();
         mid.Children.Add(Ui.Text(string.IsNullOrWhiteSpace(s.Task) ? Loc.T("Work session") : s.Task, 14.5, "TextBrush", FontWeights.SemiBold));
-        var sub = $"{(p?.Name ?? Loc.T("Deleted project"))}{(string.IsNullOrWhiteSpace(p?.Client) ? "" : " · " + p!.Client)}  ·  {(actions ? "" : ls.ToString(Loc.ShortMonthDay(), CultureInfo.CurrentCulture) + ", ")}{Fmt.Time(ls)} – {Fmt.Time(le)}";
+        var who = s.Member.Length > 0 && s.Member != State.Data.Settings.MemberName ? s.Member + "  ·  " : "";   // teammates' entries show their name
+        var sub = $"{who}{(p?.Name ?? Loc.T("Deleted project"))}{(string.IsNullOrWhiteSpace(p?.Client) ? "" : " · " + p!.Client)}  ·  {(actions ? "" : ls.ToString(Loc.ShortMonthDay(), CultureInfo.CurrentCulture) + ", ")}{Fmt.Time(ls)} – {Fmt.Time(le)}";
         mid.Children.Add(Ui.Text(sub, 12.5, "MutedBrush"));
         bool overlaps = selectionChanged != null && overlapIds.Contains(s.Id);
         if (!s.Billable || s.Tags.Count > 0 || overlaps)
@@ -285,7 +286,7 @@ public class EntriesPage : PageBase
             s.DurationMilliseconds = ms; s.EndedAtUtc = startUtc.AddMilliseconds(ms); s.HourlyRate = Math.Round(r, 2);
             s.Billable = billable.IsChecked == true;
             s.Tags = tags.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
-            if (editing == null) s.Source = "manual";
+            if (editing == null) { s.Source = "manual"; s.Member = State.Data.Settings.MemberName; }
             if (editing == null) d.Sessions.Add(s);
             State.Notify(); State.Toast(editing == null ? "Entry added" : "Entry updated");
             Budget.Check(p);

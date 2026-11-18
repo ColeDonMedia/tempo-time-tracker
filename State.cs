@@ -240,7 +240,8 @@ public static class State
                 DurationMilliseconds = ms,
                 HourlyRate = project.HourlyRate,
                 Billable = project.Billable,
-                Source = "timer"
+                Source = "timer",
+                Member = Data.Settings.MemberName
             };
             Data.Sessions.Add(saved);
         }

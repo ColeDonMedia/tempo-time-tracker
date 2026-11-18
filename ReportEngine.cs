@@ -91,6 +91,7 @@ public static class ReportEngine
             var p = State.Proj(s.ProjectId);
             switch (f.GroupBy)
             {
+                case "Member": { var m = s.Member.Trim(); Add(m.ToLowerInvariant(), m.Length == 0 ? Loc.T("(no name)") : m, s); break; }
                 case "Client": { var n = State.ClientName(p); Add(n.ToLowerInvariant(), n.Length == 0 ? Loc.T("No client set") : n, s); break; }
                 case "Task": { var t = string.IsNullOrWhiteSpace(s.Task) ? Loc.T("Work session") : s.Task.Trim(); Add(t.ToLowerInvariant(), t, s); break; }
                 case "Tag":
