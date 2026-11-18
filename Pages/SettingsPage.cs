@@ -217,7 +217,7 @@ public class SettingsPage : PageBase
             if (!s.TrackActivity) ActivityRecorder.Clear();   // turning it off also forgets what was recorded
             State.Save();
         };
-        titles.Click += (_, _) => { s.ActivityTitles = titles.IsChecked == true; State.Save(); };
+        titles.Click += (_, _) => { s.ActivityTitles = titles.IsChecked == true; if (!s.ActivityTitles) ActivityStore.StripTitles(ActivityRecorder.Dir); State.Save(); };
         var fa = new StackPanel();
         fa.Children.Add(Section("Focus & activity", "Focus rounds remind you to take breaks. Activity tracking is off unless you turn it on."));
         fa.Children.Add(Pair(Ui.Field("FOCUS ROUND", fMin), Ui.Field("BREAK", bMin)));
@@ -251,6 +251,11 @@ public class SettingsPage : PageBase
             syRow.Children.Add(Ui.Btn("Turn off", () => { s.SyncFolder = ""; State.Save(); Build(); }, "GlassButton").WithMargin(0, 0, 8, 8));
         }
         sy.Children.Add(syRow);
+        if (SyncService.BlockedRemovals > 0)
+        {
+            sy.Children.Add(Ui.Text(Loc.F("Another device deleted {0} items. That's a lot at once, so nothing was removed here yet.", SyncService.BlockedRemovals), 13, "WarnBrush", wrap: true).WithMargin(0, 4, 0, 6));
+            sy.Children.Add(Ui.Btn("Apply those deletions", () => { SyncService.AllowMassDeleteOnce = true; var r = SyncService.Run(); State.Toast(Loc.F("Synced: {0} changes received", (r?.Received ?? 0) + (r?.Removed ?? 0))); Build(); }, "DangerButton").HorizontalLeft().WithMargin(0, 0, 0, 8));
+        }
         if (SyncService.LastRunUtc is DateTime lr) sy.Children.Add(Ui.Text(Loc.F("Last synced: {0}", Fmt.Time(State.ToLocal(lr))), 12, "FaintBrush"));
         sy.Children.Add(Ui.Text("Each PC writes its own file into the folder and reads the others, every 2 minutes. If the same entry is changed in two places, the newest change wins. Settings, your billing profile and a running timer stay on each PC.", 12, "FaintBrush", wrap: true).WithMargin(0, 6, 0, 0));
         root.Children.Add(Block(sy));

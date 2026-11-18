@@ -30,21 +30,21 @@ public static class Mailer
     /// <summary>True if a compose window opened (or the user cancelled it). False means no MAPI mail app: use <see cref="Fallback"/>.</summary>
     public static bool Compose(string to, string subject, string body, string? attachment)
     {
-        var allocs = new List<IntPtr>();
+        var allocs = new List<(IntPtr Ptr, Type Type)>();
         try
         {
             var msg = new MapiMessageW { Subject = subject, NoteText = body };
             if (!string.IsNullOrWhiteSpace(to))
             {
                 var r = new MapiRecipDescW { RecipClass = MAPI_TO, Name = to, Address = "SMTP:" + to };
-                var p = Marshal.AllocHGlobal(Marshal.SizeOf<MapiRecipDescW>()); allocs.Add(p);
+                var p = Marshal.AllocHGlobal(Marshal.SizeOf<MapiRecipDescW>()); allocs.Add((p, typeof(MapiRecipDescW)));
                 Marshal.StructureToPtr(r, p, false);
                 msg.RecipCount = 1; msg.Recips = p;
             }
             if (attachment != null && File.Exists(attachment))
             {
                 var f = new MapiFileDescW { Position = -1, PathName = attachment, FileName = Path.GetFileName(attachment) };
-                var p = Marshal.AllocHGlobal(Marshal.SizeOf<MapiFileDescW>()); allocs.Add(p);
+                var p = Marshal.AllocHGlobal(Marshal.SizeOf<MapiFileDescW>()); allocs.Add((p, typeof(MapiFileDescW)));
                 Marshal.StructureToPtr(f, p, false);
                 msg.FileCount = 1; msg.Files = p;
             }
@@ -53,7 +53,11 @@ public static class Mailer
             return rc == 0 || rc == MAPI_USER_ABORT;
         }
         catch { return false; }   // no mapi32 / no default mail client
-        finally { foreach (var p in allocs) Marshal.FreeHGlobal(p); }
+        finally
+        {
+            // free the strings StructureToPtr copied, then the blocks themselves
+            foreach (var (p, t) in allocs) { Marshal.DestroyStructure(p, t); Marshal.FreeHGlobal(p); }
+        }
     }
 
     /// <summary>No MAPI mail app: open a mailto: draft (no attachment possible) and show the PDF in Explorer so it can be dragged in.</summary>

@@ -218,6 +218,9 @@ public static class SelfTest
             && CalendarFeeds.Normalize(" webcal://p01-caldav.icloud.com/published/2/abc ") == "https://p01-caldav.icloud.com/published/2/abc");
         Check("calendar url: anything else is refused",
             CalendarFeeds.Normalize("http://example.com/cal.ics") == null && CalendarFeeds.Normalize("file:///C:/x.ics") == null && CalendarFeeds.Normalize("not a url") == null && CalendarFeeds.Normalize("https://localhost/cal.ics") == null);
+        Check("calendar url: private and local network addresses are refused",
+            new[] { "https://192.168.1.10/c.ics", "https://10.0.0.5/c.ics", "https://172.16.0.1/c.ics", "https://169.254.169.254/latest", "https://127.0.0.1/c.ics", "https://[::1]/c.ics", "https://[fe80::1]/c.ics" }.All(u => CalendarFeeds.Normalize(u) == null)
+            && CalendarFeeds.Normalize("https://8.8.8.8/c.ics") != null);
         var f1 = new CalendarFeed { Id = "abc123", Url = "https://a.example/x.ics" };
         Check("calendar cache: one file per feed, inside the data folder", CalendarFeeds.CacheFile(@"C:\data", f1) == @"C:\data\calendars\abc123.ics");
 
@@ -231,6 +234,9 @@ public static class SelfTest
             UpdateService.ParseAssets(rel.Replace("https://github.com/ColeDonMedia/tempo-time-tracker/releases/download/v2.7.0/Tempo-Setup", "https://evil.example/Tempo-Setup")).InstallerUrl == null
             && !UpdateService.IsTrustedDownload("https://github.com/ColeDonMedia/tempo-time-tracker/releases/tag/v2.7.0")
             && UpdateService.IsTrustedDownload("https://github.com/ColeDonMedia/tempo-time-tracker/releases/download/v2.7.0/Tempo-Setup-2.7.0.exe"));
+        var unsigned = System.IO.Path.Combine(OutDir, "unsigned.exe");
+        System.IO.File.WriteAllBytes(unsigned, new byte[] { 0x4D, 0x5A, 0, 0 });
+        Check("update: an unsigned download never counts as validly signed", !Authenticode.IsValid(unsigned));
         var sums = "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789  Tempo.exe\n0000000000000000000000000000000000000000000000000000000000000001  Tempo-Setup-2.7.0.exe\n";
         Check("update: reads the expected hash for a file", UpdateService.ExpectedHash(sums, "Tempo-Setup-2.7.0.exe") == "0000000000000000000000000000000000000000000000000000000000000001" && UpdateService.ExpectedHash(sums, "Other.exe") == null);
 
@@ -239,6 +245,9 @@ public static class SelfTest
         var url = Problem.IssueUrl("2.7.0", "Windows 11 (26100)", log, @"C:\Users\sam");
         var body = Uri.UnescapeDataString(url[(url.IndexOf("body=") + 5)..]);
         Check("problem report: pre-filled GitHub issue with version and Windows build", url.StartsWith("https://github.com/ColeDonMedia/tempo-time-tracker/issues/new?") && body.Contains("2.7.0") && body.Contains("26100"));
+        var url2 = Problem.IssueUrl("2.7.0", "Windows", "error on SAMS-LAPTOP for sam in D:\\Sync\\Tempo", @"C:\Users\sam", "sam", "SAMS-LAPTOP", @"D:\Sync\Tempo");
+        var body2 = Uri.UnescapeDataString(url2[(url2.IndexOf("body=") + 5)..]);
+        Check("problem report: user name, PC name and sync folder are hidden too", !body2.Contains("SAMS-LAPTOP") && !body2.Contains(@"D:\Sync\Tempo") && !body2.Contains(" sam ") && body2.Contains("%COMPUTERNAME%"), body2);
         Check("problem report: your user folder is hidden and the link stays short", !body.Contains(@"C:\Users\sam") && body.Contains(@"%USERPROFILE%\AppData") && url.Length < 7000, url.Length.ToString());
     }
 
@@ -287,6 +296,30 @@ public static class SelfTest
         var self = new SyncFile { DeviceId = "devA", Items = { new SyncItem { Kind = "Session", Id = "zz", StampUtc = t.AddDays(1), Data = System.Text.Json.JsonSerializer.SerializeToElement(new Session { Id = "zz" }) } } };
         Sync.Step(a, sa, new[] { self }, "devA", "Ana", t.AddMinutes(40));
         Check("sync: this device's own file isn't read back as someone else's", a.Sessions.All(s => s.Id != "zz"));
+
+        // ---- hardening: other devices' files are untrusted ----
+        var h = NewWs(); var sh = new SyncState();
+        var evilInv = new Invoice { Id = "i1", Number = "INV-1", FilePath = @"\\attacker\share\x.pdf", LogoPath = @"\\attacker\share\logo.png", PayLink = "javascript:alert(1)" };
+        var evilExp = new Expense { Id = "e1", ProjectId = "p1", ReceiptPath = @"C:\Users\me\Documents\secret.pdf" };
+        SyncItem It(string kind, object o, string id, DateTime stamp) => new() { Kind = kind, Id = id, StampUtc = stamp, Data = System.Text.Json.JsonSerializer.SerializeToElement(o, o.GetType()) };
+        var evil = new SyncFile { DeviceId = "devX", InvoiceCounter = int.MaxValue, Items = { It("Invoice", evilInv, "i1", t), It("Expense", evilExp, "e1", t),
+            It("Session", new Session { Id = "future", ProjectId = "p1" }, "future", t.AddYears(50)) } };
+        Sync.Step(h, sh, new[] { evil }, "devH", "Hal", t.AddMinutes(1));
+        var gotInv = h.Invoices.Single(); var gotExp = h.Expenses.Single();
+        Check("sync hardening: file paths from other devices are dropped", gotInv.FilePath == "" && gotInv.LogoPath == "" && gotExp.ReceiptPath == "");
+        Check("sync hardening: unsafe pay links are dropped", gotInv.PayLink == "");
+        Check("sync hardening: stamps from the future are refused", h.Sessions.All(s => s.Id != "future"));
+        Check("sync hardening: absurd invoice counters are capped", h.InvoiceCounter <= Sync.MaxCounter);
+
+        var m = NewWs(); var sm = new SyncState();
+        for (int i = 0; i < 40; i++) m.Sessions.Add(new Session { Id = "m" + i, ProjectId = "p1", StartedAtUtc = t, EndedAtUtc = t.AddMinutes(1), DurationMilliseconds = 60_000 });
+        Sync.Step(m, sm, Array.Empty<SyncFile>(), "devM", "Mo", t);
+        var wipe = new SyncFile { DeviceId = "devW", Deleted = m.Sessions.Select(s => new Tombstone { Key = "Session:" + s.Id, StampUtc = t.AddMinutes(5) }).ToList() };
+        var trashed = new List<string>();
+        var mr = Sync.Step(m, sm, new[] { wipe }, "devM", "Mo", t.AddMinutes(6), (k, o) => trashed.Add(k), allowMassDelete: false);
+        Check("sync hardening: a mass delete from another device is held back for you to confirm", m.Sessions.Count == 40 && mr.BlockedRemovals == 40 && mr.Removed == 0);
+        mr = Sync.Step(m, sm, new[] { wipe }, "devM", "Mo", t.AddMinutes(7), (k, o) => trashed.Add(k), allowMassDelete: true);
+        Check("sync hardening: confirmed sync deletions go to Recently deleted", m.Sessions.Count == 0 && mr.Removed == 40 && trashed.Count == 40 && trashed.All(k => k == "Session"));
 
         // the real thing: two devices, one shared folder, state saved to disk between runs
         var shared = System.IO.Path.Combine(OutDir, "sync-shared");
@@ -439,6 +472,10 @@ public static class SelfTest
         var pruned = ActivityStore.Prune(adir, 0, s0.AddDays(1).AddHours(6));   // 19 Nov, 21:00 UTC
         Check("activity store: old days are deleted, other files kept", pruned == 1 && System.IO.Directory.GetFiles(adir).Length == 2 && ActivityStore.Load(adir, s0.AddDays(1).AddMinutes(-1), s0.AddDays(1).AddMinutes(1)).Count == 1,
             $"pruned {pruned}, files {string.Join(",", System.IO.Directory.GetFiles(adir).Select(System.IO.Path.GetFileName))}");
+        ActivityStore.Append(adir, new(s0.AddDays(1).AddMinutes(1), "Word", "Divorce papers.docx"));
+        ActivityStore.StripTitles(adir);
+        var stripped = ActivityStore.Load(adir, s0.AddDays(1).AddMinutes(-1), s0.AddDays(1).AddMinutes(5));
+        Check("activity store: turning titles off erases the ones already saved", stripped.Count == 2 && stripped.All(x => x.Title == "") && stripped.Any(x => x.App == "Word"));
         Check("activity: long untracked app stretches become suggestions", sug.Count == 1 && sug[0].App == "Figma" && sug[0].Title == "Brand board" && sug[0].StartUtc == s0 && sug[0].EndUtc == s0.AddMinutes(40), string.Join(" | ", sug));
     }
 

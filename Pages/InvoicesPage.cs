@@ -467,7 +467,7 @@ public class InvoicesPage : PageBase
         Grid.SetColumn(pill, 2); g.Children.Add(pill);
 
         var acts = new StackPanel { Orientation = Orientation.Horizontal };
-        if (File.Exists(inv.FilePath))
+        if (SafeOpen.IsAllowed(inv.FilePath, null, ".pdf") && File.Exists(inv.FilePath))
             acts.Children.Add(Ui.IconBtn(Icons.Doc, "Open PDF", () => { if (!SafeOpen.Open(inv.FilePath, null, ".pdf")) State.Toast("That file couldn't be read.", true); }));
         acts.Children.Add(Ui.IconBtn(Icons.Download, "Re-export PDF", () => ReExport(inv)));
         if (inv.Status != "Void")
@@ -637,15 +637,12 @@ public class InvoicesPage : PageBase
     static void Email(Invoice inv, bool reminder)
     {
         // make sure there is an up-to-date PDF to attach
-        var pdf = inv.FilePath;
-        if (!SafeOpen.IsAllowed(pdf, null, ".pdf") || !File.Exists(pdf))
-        {
-            var dir = Path.Combine(State.Dir, "invoices");
-            Directory.CreateDirectory(dir);
-            pdf = Path.Combine(dir, InvoiceService.SafeName($"{inv.Number} {inv.ClientName}") + ".pdf");
-            try { InvoiceService.WritePdf(inv, pdf); inv.FilePath = pdf; }
-            catch (Exception ex) { State.Toast(Loc.T("Couldn't create the PDF: ") + ex.Message, true); return; }
-        }
+        // always attach a fresh copy written by Tempo into its own folder, never whatever path the record points at
+        var dir = Path.Combine(State.Dir, "invoices");
+        Directory.CreateDirectory(dir);
+        var pdf = Path.Combine(dir, InvoiceService.SafeName($"{inv.Number} {inv.ClientName}") + ".pdf");
+        try { InvoiceService.WritePdf(inv, pdf); }
+        catch (Exception ex) { State.Toast(Loc.T("Couldn't create the PDF: ") + ex.Message, true); return; }
         if (string.IsNullOrWhiteSpace(inv.ClientEmail)) State.Toast("This client has no email address yet. Add it on the Clients page.", true);
         var (to, subject, body) = InvoiceEmail.Compose(inv, reminder, DateTime.UtcNow);
         if (!Mailer.Compose(to, subject, body, pdf))

@@ -123,7 +123,8 @@ public static class InvoiceService
         var page = w.AddPage(PW, PH);
         double y = M;
 
-        PdfWriter.Img? logo = !string.IsNullOrEmpty(inv.LogoPath) && File.Exists(inv.LogoPath) ? w.LoadImage(inv.LogoPath) : null;
+        // the logo must be the copy Tempo keeps in its own data folder (never a network or arbitrary path)
+        PdfWriter.Img? logo = SafeOpen.IsAllowed(inv.LogoPath, State.Dir, ".png", ".jpg", ".jpeg") && File.Exists(inv.LogoPath) ? w.LoadImage(inv.LogoPath) : null;
 
         double Para(PdfWriter.Page pg, double x, double top, double width, string text, double size, bool b, Color c)
         {

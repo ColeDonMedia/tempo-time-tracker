@@ -51,6 +51,9 @@ public static class TrashBin
                         }
                     }
                     break;
+                case "Recurring":
+                    if (Read<RecurringInvoice>(t) is { } rr && d.Recurring.All(x => x.Id != rr.Id)) d.Recurring.Add(rr);
+                    break;
                 default: return false;
             }
             d.Trash.Remove(t);

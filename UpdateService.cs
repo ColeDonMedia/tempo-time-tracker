@@ -3,6 +3,38 @@ using System.Text.Json;
 
 namespace Tempo;
 
+/// <summary>Windows' own signature check (WinVerifyTrust) for a downloaded file.</summary>
+static class Authenticode
+{
+    [System.Runtime.InteropServices.DllImport("wintrust.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    static extern int WinVerifyTrust(IntPtr hwnd, ref Guid action, ref WINTRUST_DATA data);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    struct WINTRUST_FILE_INFO { public int cbStruct; public string pcwszFilePath; public IntPtr hFile; public IntPtr pgKnownSubject; }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct WINTRUST_DATA
+    {
+        public int cbStruct; public IntPtr pPolicyCallbackData, pSIPClientData; public int dwUIChoice, fdwRevocationChecks, dwUnionChoice;
+        public IntPtr pFile; public int dwStateAction; public IntPtr hWVTStateData, pwszURLReference; public int dwProvFlags, dwUIContext; public IntPtr pSignatureSettings;
+    }
+
+    public static bool IsValid(string path)
+    {
+        var action = new Guid("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");   // WINTRUST_ACTION_GENERIC_VERIFY_V2
+        var fi = new WINTRUST_FILE_INFO { cbStruct = System.Runtime.InteropServices.Marshal.SizeOf<WINTRUST_FILE_INFO>(), pcwszFilePath = path };
+        var pFile = System.Runtime.InteropServices.Marshal.AllocHGlobal(fi.cbStruct);
+        try
+        {
+            System.Runtime.InteropServices.Marshal.StructureToPtr(fi, pFile, false);
+            var data = new WINTRUST_DATA { cbStruct = System.Runtime.InteropServices.Marshal.SizeOf<WINTRUST_DATA>(), dwUIChoice = 2 /* none */, dwUnionChoice = 1 /* file */, pFile = pFile };
+            return WinVerifyTrust(new IntPtr(-1), ref action, ref data) == 0;
+        }
+        catch { return false; }
+        finally { System.Runtime.InteropServices.Marshal.DestroyStructure<WINTRUST_FILE_INFO>(pFile); System.Runtime.InteropServices.Marshal.FreeHGlobal(pFile); }
+    }
+}
+
 /// <summary>Opt-in check for a newer release on GitHub. It never downloads or runs anything: it only offers to open the release page.</summary>
 public static class UpdateService
 {
@@ -108,17 +140,60 @@ public static class UpdateService
         if (!IsTrustedDownload(iu) || !IsTrustedDownload(su)) return null;
         try
         {
-            using var http = Client(200_000_000);
+            using var http = Client(1_000_000);
             var expected = ExpectedHash(await http.GetStringAsync(su), name);
             if (expected == null) return null;
-            var bytes = await http.GetByteArrayAsync(iu);
-            if (!Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).Equals(expected, StringComparison.OrdinalIgnoreCase)) return null;
             var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "TempoUpdate");
             System.IO.Directory.CreateDirectory(dir);
             var path = System.IO.Path.Combine(dir, System.IO.Path.GetFileName(name));
-            await System.IO.File.WriteAllBytesAsync(path, bytes);
+            // stream to disk (no 200 MB buffer), hashing as we go, with the file locked against other writers
+            using (var hash = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256))
+            {
+                using (var resp = await http.GetAsync(iu, HttpCompletionOption.ResponseHeadersRead))
+                {
+                    resp.EnsureSuccessStatusCode();
+                    if (resp.Content.Headers.ContentLength is > MaxInstallerBytes) return null;
+                    await using var src = await resp.Content.ReadAsStreamAsync();
+                    await using var dst = new System.IO.FileStream(path, System.IO.FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None);
+                    var buf = new byte[81920]; long total = 0; int n;
+                    while ((n = await src.ReadAsync(buf)) > 0)
+                    {
+                        total += n; if (total > MaxInstallerBytes) return null;
+                        hash.AppendData(buf, 0, n); await dst.WriteAsync(buf.AsMemory(0, n));
+                    }
+                }
+                if (!Convert.ToHexString(hash.GetHashAndReset()).Equals(expected, StringComparison.OrdinalIgnoreCase)) { TryDelete(path); return null; }
+            }
+            if (!SignatureMatchesRunningApp(path)) { TryDelete(path); return null; }
             return path;
         }
         catch { return null; }
+    }
+
+    const long MaxInstallerBytes = 200_000_000;
+    static void TryDelete(string p) { try { System.IO.File.Delete(p); } catch { } }
+
+    /// <summary>
+    /// When this copy of Tempo is code-signed, an update must carry a valid signature from the same certificate. That
+    /// protects against a release published by someone who got hold of the GitHub account but not the signing key.
+    /// Unsigned builds (no certificate configured) rely on HTTPS + the release checksum only.
+    /// </summary>
+    public static bool SignatureMatchesRunningApp(string installer)
+    {
+        var mine = SignerThumbprint(Environment.ProcessPath ?? "");
+        if (mine == null) return true;
+        return Authenticode.IsValid(installer) && SignerThumbprint(installer) == mine;
+    }
+
+    static string? SignerThumbprint(string file)
+    {
+        try
+        {
+#pragma warning disable SYSLIB0057
+            using var c = new System.Security.Cryptography.X509Certificates.X509Certificate2(System.Security.Cryptography.X509Certificates.X509Certificate.CreateFromSignedFile(file));
+#pragma warning restore SYSLIB0057
+            return c.Thumbprint;
+        }
+        catch { return null; }   // not signed
     }
 }

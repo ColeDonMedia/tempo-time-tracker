@@ -61,8 +61,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\Tempo.exe"; Description: "{cm:LaunchProgram,Tempo}"; Flags: nowait postinstall skipifsilent; Check: HasDesktopRuntime
-; an in-app update runs the installer with /SILENT: start Tempo again afterwards
-Filename: "{app}\Tempo.exe"; Flags: nowait; Check: WizardSilent and HasDesktopRuntime
+; only Tempo's own in-app update passes /RESTARTAPP=1: start Tempo again afterwards (not after winget or admin deployments)
+Filename: "{app}\Tempo.exe"; Flags: nowait; Check: RestartRequested and HasDesktopRuntime
 
 [Code]
 // Tempo.exe is framework-dependent: it needs the .NET 8 Desktop Runtime (x64).
@@ -76,6 +76,11 @@ begin
     Result := True;
     FindClose(FindRec);
   end;
+end;
+
+function RestartRequested: Boolean;
+begin
+  Result := ExpandConstant('{param:RESTARTAPP|0}') = '1';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

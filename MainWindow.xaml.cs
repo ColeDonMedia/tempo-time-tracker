@@ -98,6 +98,7 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(RunRecurring), DispatcherPriority.Loaded);
         Dispatcher.BeginInvoke(new Action(() => { lastBackupCheck = DateTime.UtcNow; BackupService.RunIfDue(); }), DispatcherPriority.ApplicationIdle);
         Dispatcher.BeginInvoke(new Action(CheckForUpdate), DispatcherPriority.ApplicationIdle);
+        Dispatcher.BeginInvoke(new Action(() => ActivityStore.Prune(ActivityRecorder.Dir, Math.Max(1, State.Data.Settings.ActivityKeepDays), DateTime.UtcNow)), DispatcherPriority.ApplicationIdle);
     }
 
     DateTime lastUpdateCheck = DateTime.MinValue;
@@ -131,7 +132,7 @@ public partial class MainWindow : Window
         SyncService.Run();
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(file) { UseShellExecute = true, Arguments = "/SILENT /CLOSEAPPLICATIONS" });
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(file) { UseShellExecute = true, Arguments = "/SILENT /CLOSEAPPLICATIONS /RESTARTAPP=1" });
             tray!.Quit();
         }
         catch { ShowToast("The installer didn't start. Opening the release page instead.", true); OpenRelease(releaseUrl); }
@@ -139,6 +140,7 @@ public partial class MainWindow : Window
 
     HotkeyService? hotkey;
     DateTime lastSync = DateTime.MinValue;   // first tick syncs straight away
+    bool massDeleteWarned;
     DateTime lastCalendar = DateTime.MinValue;
 
     /// <summary>Downloads subscribed calendars in the background, then refreshes the Day view if it's open.</summary>
@@ -326,7 +328,7 @@ public partial class MainWindow : Window
         if ((DateTime.UtcNow - lastBackupCheck).TotalHours >= 6) { lastBackupCheck = DateTime.UtcNow; BackupService.RunIfDue(); }
         if (DateTime.UtcNow.Second % 15 == 0) CheckReminders();
         if (FocusMode.Tick() is string focusMsg) Notify(focusMsg);
-        if (!string.IsNullOrEmpty(State.Data.Settings.SyncFolder) && (DateTime.UtcNow - lastSync).TotalMinutes >= 2) { lastSync = DateTime.UtcNow; SyncService.Run(); }
+        if (!string.IsNullOrEmpty(State.Data.Settings.SyncFolder) && (DateTime.UtcNow - lastSync).TotalMinutes >= 2) { lastSync = DateTime.UtcNow; if (SyncService.Run() is { BlockedRemovals: > 0 } blockedRun && !massDeleteWarned) { massDeleteWarned = true; Notify(Loc.F("Another device deleted {0} items. Open Settings → Sync to review before anything is removed here.", blockedRun.BlockedRemovals)); } }
         if (State.Data.Settings.CalendarFeeds.Count > 0 && (DateTime.UtcNow - lastCalendar).TotalMinutes >= 30) { lastCalendar = DateTime.UtcNow; RefreshCalendars(); }
         ActivityRecorder.Tick();
         if (State.Running && State.ElapsedMs > 8 * 3600_000L && !longWarned)

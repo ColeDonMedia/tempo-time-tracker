@@ -15,8 +15,22 @@ public static class CalendarFeeds
     {
         url = url.Trim();
         if (url.StartsWith("webcal://", StringComparison.OrdinalIgnoreCase)) url = "https://" + url[9..];
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttps || u.IsLoopback || !u.Host.Contains('.')) return null;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttps || u.IsLoopback) return null;
+        if (System.Net.IPAddress.TryParse(u.Host.Trim('[', ']'), out var ip)) { if (IsPrivate(ip)) return null; }
+        else if (!u.Host.Contains('.') || u.Host.EndsWith(".local", StringComparison.OrdinalIgnoreCase) || u.Host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)) return null;
         return u.ToString();
+    }
+
+    /// <summary>Loopback, private, link-local and similar addresses: a calendar feed has no business on the local network.</summary>
+    public static bool IsPrivate(System.Net.IPAddress ip)
+    {
+        if (System.Net.IPAddress.IsLoopback(ip)) return true;
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+            return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6UniqueLocal || ip.Equals(System.Net.IPAddress.IPv6None);
+        var b = ip.GetAddressBytes();
+        return b[0] == 10 || b[0] == 127 || b[0] == 0 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168)
+               || (b[0] == 169 && b[1] == 254) || (b[0] == 100 && b[1] >= 64 && b[1] <= 127) || b[0] >= 224;
     }
 
     public static string CacheFile(string dir, CalendarFeed f) =>
@@ -27,7 +41,9 @@ public static class CalendarFeeds
     /// <summary>Downloads each feed (at most every 30 minutes) into the data folder. Failures keep the last good copy.</summary>
     public static async Task RefreshAsync(string dir, IEnumerable<CalendarFeed> feeds, bool force = false)
     {
-        using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(20), MaxResponseContentBufferSize = MaxBytes };
+        // no redirects: a feed must not bounce us to an address we'd have refused
+        using var handler = new System.Net.Http.HttpClientHandler { AllowAutoRedirect = false };
+        using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20), MaxResponseContentBufferSize = MaxBytes };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Tempo-calendar");
         foreach (var f in feeds.ToList())
         {
@@ -63,9 +79,12 @@ public static class CalendarFeeds
 /// <summary>"Report a problem": a pre-filled GitHub issue the user reviews before sending.</summary>
 public static class Problem
 {
-    public static string IssueUrl(string version, string os, string log, string userProfile)
+    public static string IssueUrl(string version, string os, string log, string userProfile, string userName = "", string machine = "", string syncFolder = "")
     {
+        if (!string.IsNullOrEmpty(syncFolder)) log = log.Replace(syncFolder, "%SYNCFOLDER%", StringComparison.OrdinalIgnoreCase);
         if (!string.IsNullOrEmpty(userProfile)) log = log.Replace(userProfile, "%USERPROFILE%", StringComparison.OrdinalIgnoreCase);
+        if (machine.Length > 1) log = log.Replace(machine, "%COMPUTERNAME%", StringComparison.OrdinalIgnoreCase);
+        if (userName.Length > 1) log = System.Text.RegularExpressions.Regex.Replace(log, $@"\b{System.Text.RegularExpressions.Regex.Escape(userName)}\b", "%USERNAME%", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         log = log.Trim();
         if (log.Length > 3000) log = "…" + log[^3000..];   // the newest part of the log matters most; links over ~8 KB get cut off
         var body = $"**What happened?**\n\n(Describe what you were doing.)\n\n**Tempo** {version}\n**Windows** {os}\n\n**Error log (your user folder is hidden)**\n```\n{(log.Length == 0 ? "(no errors logged)" : log)}\n```\n";

@@ -97,6 +97,26 @@ public static class ActivityStore
         return list;
     }
 
+    /// <summary>Rewrites every stored day without window titles (used when the user turns titles off).</summary>
+    public static void StripTitles(string dir)
+    {
+        if (!System.IO.Directory.Exists(dir)) return;
+        foreach (var f in System.IO.Directory.GetFiles(dir, "activity-*.jsonl"))
+        {
+            try
+            {
+                var lines = new List<string>();
+                foreach (var line in System.IO.File.ReadLines(f))
+                {
+                    try { if (System.Text.Json.JsonSerializer.Deserialize<ActivitySample>(line) is { } s) lines.Add(System.Text.Json.JsonSerializer.Serialize(s with { Title = "" })); }
+                    catch { }
+                }
+                System.IO.File.WriteAllText(f, string.Join("\n", lines) + (lines.Count > 0 ? "\n" : ""));
+            }
+            catch { }
+        }
+    }
+
     /// <summary>Deletes activity files older than <paramref name="keepDays"/> full days. Never touches other files.</summary>
     public static int Prune(string dir, int keepDays, DateTime nowUtc)
     {

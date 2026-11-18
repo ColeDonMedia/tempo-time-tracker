@@ -232,7 +232,7 @@ public partial class App : Application
             if (System.IO.File.Exists(path)) log = System.IO.File.ReadAllText(path);
         }
         catch { }
-        var url = Problem.IssueUrl(UpdateService.CurrentVersion, $"{Environment.OSVersion.VersionString}", log, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        var url = Problem.IssueUrl(UpdateService.CurrentVersion, $"{Environment.OSVersion.VersionString}", log, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Environment.UserName, Environment.MachineName, State.Data.Settings.SyncFolder);
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
     }
 

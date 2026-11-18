@@ -73,7 +73,7 @@ public static class ExpensesView
         Grid.SetColumn(amt, 2); g.Children.Add(amt);
 
         var acts = new StackPanel { Orientation = Orientation.Horizontal };
-        if (!string.IsNullOrEmpty(e.ReceiptPath) && File.Exists(e.ReceiptPath))
+        if (SafeOpen.IsAllowed(e.ReceiptPath, Path.Combine(State.Dir, "receipts"), ".pdf", ".png", ".jpg", ".jpeg") && File.Exists(e.ReceiptPath))
             acts.Children.Add(Ui.IconBtn(Icons.Receipt, "Open receipt", () => { if (!SafeOpen.Open(e.ReceiptPath, Path.Combine(State.Dir, "receipts"), ".pdf", ".png", ".jpg", ".jpeg")) State.Toast("That file couldn't be read.", true); }));
         if (e.InvoiceId != null)
         {
