@@ -50,6 +50,16 @@ public static class DemoData
         d.Expenses.Add(new Expense { ProjectId = "p1", Date = today.AddDays(-4), Description = "Stock photo licence", Amount = 49m });
         d.Expenses.Add(new Expense { ProjectId = "p4", Date = today.AddDays(-2), Description = "Printing: proof set", Amount = 86.50m });
         foreach (var s in d.Sessions.Where(x => x.Task == "Client call")) s.Billable = false;
+        d.Invoices[1].Payments.Add(new Payment { DateUtc = DateTime.UtcNow.AddDays(-10), Amount = 300m, Note = "Deposit" });
+        d.Invoices[1].PayLink = "https://pay.example.com/invoice/INV-2026-002";
+        d.Invoices.Add(new Invoice
+        {
+            Kind = "Quote", Number = "QUO-2026-001", ProjectId = "p4", ProjectName = "Pitch deck", ClientName = "Orbit Labs", Status = "Sent", IssuedUtc = DateTime.UtcNow.AddDays(-3), DueUtc = DateTime.UtcNow.AddDays(27),
+            TimeZoneId = State.Tz.Id, Currency = "USD", StudioName = d.Billing.Name, StudioEmail = d.Billing.Email,
+            Lines = { new InvoiceLine { Description = "Investor deck design (20 slides)", Hours = 1, Rate = 2400, Amount = 2400, Kind = "Custom" } }
+        });
+        InvoiceService.ApplyTotals(d.Invoices[^1]);
+        d.Recurring.Add(new RecurringInvoice { Name = "Monthly retainer", ProjectId = "p2", Frequency = "Monthly", NextRun = today.AddDays(12), Lines = { new InvoiceLine { Description = "Website care plan", Hours = 1, Rate = 450, Amount = 450, Kind = "Custom" } } });
         State.Normalize();
         d.InvoiceCounter = 3;
         d.InvoiceNumber = State.NextInvoiceNumber();

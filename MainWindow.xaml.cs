@@ -88,6 +88,15 @@ public partial class MainWindow : Window
         Closed += (_, _) => { mini?.Shutdown(); tray?.Dispose(); };
         Navigate("Overview");
         UpdateMini();
+        Dispatcher.BeginInvoke(new Action(RunRecurring), DispatcherPriority.Loaded);
+    }
+
+    DateTime lastRecurringCheck = DateTime.MinValue;
+    void RunRecurring()
+    {
+        lastRecurringCheck = DateTime.UtcNow;
+        var n = RecurringService.RunDue();
+        if (n > 0) ShowToast(Loc.F("{0} recurring invoice(s) created. Open Invoices to export them.", n));
     }
 
     void Min_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
@@ -166,6 +175,7 @@ public partial class MainWindow : Window
 
     public void OpenInvoiceFor(string projectId)
     {
+        InvoicesPage.SetTab("Invoices");
         Navigate("Invoices");
         (current as InvoicesPage)?.SelectProject(projectId);
     }
@@ -187,6 +197,7 @@ public partial class MainWindow : Window
         UpdateMini();
         tray?.Update();
         CheckIdle();
+        if ((DateTime.UtcNow - lastRecurringCheck).TotalMinutes >= 60) RunRecurring();
         if (State.Running && State.ElapsedMs > 8 * 3600_000L && !longWarned)
         {
             longWarned = true;

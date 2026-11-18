@@ -77,7 +77,17 @@ public class SettingsPage : PageBase
         bd.Children.Add(Section("Billing defaults", "Used when you create a new invoice. You can still change them per invoice."));
         bd.Children.Add(Pair(Ui.Field("CURRENCY", cur), Ui.Field("ROUND BILLED TIME", round)));
         bd.Children.Add(Pair(Ui.Field("PAYMENT TERMS (DAYS)", terms), Ui.Field("DEFAULT TAX %", taxP)));
-        bd.Children.Add(Ui.Field("TAX LABEL", taxL, 0));
+        bd.Children.Add(Ui.Field("TAX LABEL", taxL));
+        var tpl = Ui.Combo(new[] { "Classic", "Minimal", "Bold" }, s.InvoiceTemplate);
+        tpl.SelectionChanged += (_, _) => { s.InvoiceTemplate = (string)tpl.SelectedItem; State.Save(); };
+        var lateP = Ui.Input(Fmt.Dec(s.LateFeePercent), "0");
+        lateP.LostFocus += (_, _) => { if (Ui.TryDec(lateP.Text, out var n) && n is >= 0 and <= 100) { s.LateFeePercent = n; State.Save(); } else lateP.Text = Fmt.Dec(s.LateFeePercent); };
+        var grace = Ui.Input(s.LateFeeGraceDays.ToString(), "0");
+        grace.LostFocus += (_, _) => { if (int.TryParse(grace.Text, out var n) && n is >= 0 and <= 365) { s.LateFeeGraceDays = n; State.Save(); } else grace.Text = s.LateFeeGraceDays.ToString(); };
+        var payL = Ui.Input(s.DefaultPayLink, "https://…");
+        payL.LostFocus += (_, _) => { s.DefaultPayLink = payL.Text.Trim(); State.Save(); };
+        bd.Children.Add(Pair(Ui.Field("DEFAULT TEMPLATE", tpl), Ui.Field("DEFAULT PAY LINK", payL)));
+        bd.Children.Add(Pair(Ui.Field("LATE FEE (%)", lateP, 0), Ui.Field("GRACE PERIOD (DAYS)", grace, 0)));
         root.Children.Add(Block(bd));
 
         // ---------- Billing profile ----------

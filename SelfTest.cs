@@ -155,6 +155,35 @@ public static class SelfTest
         var csv = ReportEngine.Csv(all, new ReportFilter());
         Check("report CSV has a header, rows and a total", csv.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries).Length == 4);
 
+        // ---------- invoicing ----------
+        var invP = State.Data.Projects[0];
+        State.Data.Expenses.Clear();
+        State.Data.Expenses.Add(new Expense { ProjectId = "p1", Date = State.TodayLocal.AddDays(-2), Amount = 40m, Billable = true });
+        State.Data.Expenses.Add(new Expense { ProjectId = "p1", Date = State.TodayLocal.AddDays(-2), Amount = 15m, Billable = false });
+        State.Data.Expenses.Add(new Expense { ProjectId = "p1", Date = State.TodayLocal.AddDays(-2), Amount = 25m, Billable = true, InvoiceId = "old" });
+        var (el, es) = InvoiceService.ExpenseLines(invP, State.TodayLocal.AddDays(-30), State.TodayLocal);
+        Check("expense lines take billable, un-invoiced expenses only", es.Count == 1 && el[0].Amount == 40m && el[0].Kind == "Expense", es.Count.ToString());
+        var (tl, tsessions) = InvoiceService.BuildLines(invP, State.TodayLocal.AddDays(-30), State.TodayLocal, "Task", 0);
+        Check("time lines skip non-billable time", tsessions.All(x => x.Billable) && tl.Sum(l => l.Hours) == 2m, tl.Sum(l => l.Hours).ToString());
+        var mixed = new Invoice { TaxPercent = 10m };
+        mixed.Lines.AddRange(tl); mixed.Lines.AddRange(el);
+        mixed.Lines.Add(new InvoiceLine { Description = "Fee", Amount = 100m, Kind = "Fee" });
+        mixed.Lines.Add(new InvoiceLine { Description = "Custom", Hours = 3, Rate = 20m, Amount = 60m, Kind = "Custom" });
+        InvoiceService.ApplyTotals(mixed);
+        Check("only time lines count toward total hours", mixed.TotalHours == 2m, mixed.TotalHours.ToString());
+        Check("subtotal and tax add up across all line types", mixed.Subtotal == 400m && mixed.TaxAmount == 40m && mixed.Total == 440m, $"{mixed.Subtotal}/{mixed.TaxAmount}/{mixed.Total}");
+        mixed.LateFeeAmount = 22m; mixed.Payments.Add(new Payment { Amount = 100m });
+        Check("late fee and partial payment flow into the balance", mixed.GrandTotal == 462m && mixed.Balance == 362m, mixed.Balance.ToString());
+
+        State.Data.InvoiceNumber = State.NextInvoiceNumber();
+        State.Data.Recurring.Add(new RecurringInvoice { Name = "Retainer", ProjectId = "p1", Frequency = "Monthly", NextRun = State.TodayLocal.AddMonths(-2).AddDays(-1), Lines = { new InvoiceLine { Description = "Care plan", Hours = 1, Rate = 500m, Amount = 500m, Kind = "Custom" } } });
+        var before2 = State.Data.Invoices.Count;
+        var made = RecurringService.RunDue();
+        Check("recurring invoices catch up on every missed period", made == 3 && State.Data.Invoices.Count == before2 + 3, made.ToString());
+        Check("recurring schedule moves past today", State.Data.Recurring[0].NextRun > State.TodayLocal);
+        Check("recurring invoices get unique numbers", State.Data.Invoices.Select(x => x.Number).Distinct().Count() == State.Data.Invoices.Count);
+        Check("next dates advance by the chosen frequency", RecurringService.Advance(new DateTime(2026, 1, 31), "Monthly") == new DateTime(2026, 2, 28) && RecurringService.Advance(new DateTime(2026, 1, 1), "Weekly") == new DateTime(2026, 1, 8) && RecurringService.Advance(new DateTime(2026, 1, 1), "Quarterly") == new DateTime(2026, 4, 1));
+
         // ---------- timesheet grid ----------
         var proj = State.Data.Projects[1];
         var day = State.TodayLocal.AddDays(-3);

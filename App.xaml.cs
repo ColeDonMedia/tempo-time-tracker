@@ -54,7 +54,7 @@ public partial class App : Application
         {
             // Realistic sample invoice from the fictional demo data (used for the README image).
             var pr = State.Data.Projects.First(x => x.Id == "p4");
-            var (lines, _) = InvoiceService.BuildLines(pr, State.TodayLocal.AddDays(-30), State.TodayLocal, "Task", 0);
+            var (lines, sampleSessions) = InvoiceService.BuildLines(pr, State.TodayLocal.AddDays(-30), State.TodayLocal, "Task", 0);
             var b = State.Data.Billing;
             var sample = new Invoice
             {
@@ -64,6 +64,16 @@ public partial class App : Application
                 TimeZoneId = State.Tz.Id, Currency = "USD", Lines = lines, TaxLabel = "Sales tax", TaxPercent = 8.5m,
                 Note = b.Note, PaymentInstructions = b.PaymentInstructions, StudioName = b.Name, StudioEmail = b.Email, StudioAddress = b.Address
             };
+            var ti = Array.IndexOf(Args, "--template");
+            sample.Template = ti >= 0 && ti + 1 < Args.Length ? Args[ti + 1] : "Classic";
+            sample.PayLink = "https://pay.example.com/invoice/INV-2026-003?amount=1129.05";
+            sample.IncludeTimesheet = true; sample.Timesheet = InvoiceService.TimesheetLines(sampleSessions);
+            if (Args.Contains("--payments")) { sample.Payments.Add(new Payment { Amount = 300m, DateUtc = DateTime.UtcNow.AddDays(-5) }); sample.LateFeeAmount = 25m; }
+            if (Args.Contains("--quote"))
+            {
+                sample.Kind = "Quote"; sample.Number = "QUO-2026-004"; sample.Status = "Accepted"; sample.PayLink = ""; sample.IncludeTimesheet = false; sample.Timesheet.Clear();
+                sample.Lines = new() { new InvoiceLine { Description = "Investor deck design (20 slides)", Hours = 1, Rate = 2400, Amount = 2400, Kind = "Custom" }, new InvoiceLine { Description = "Two rounds of revisions", Hours = 2, Rate = 150, Amount = 300, Kind = "Custom" } };
+            }
             InvoiceService.ApplyTotals(sample);
             InvoiceService.WritePdf(sample, Args[Array.IndexOf(Args, "--sample-pdf") + 1]);
             Shutdown(); return;
@@ -136,6 +146,20 @@ public partial class App : Application
             using (var tfs = System.IO.File.Create(System.IO.Path.Combine(dir, $"{prefix}-{file}.png"))) tenc.Save(tfs);
         }
         EntriesPage.SetTab("Entries");
+        foreach (var (tabName, file) in new[] { ("Quotes", "quotes"), ("Recurring", "recurring") })
+        {
+            InvoicesPage.SetTab(tabName);
+            win.Navigate("Invoices");
+            await Task.Delay(1000);
+            var ir = (FrameworkElement)win.Content; ir.UpdateLayout();
+            var irb = new System.Windows.Media.Imaging.RenderTargetBitmap((int)ir.ActualWidth, (int)ir.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            var ibg = new System.Windows.Media.DrawingVisual();
+            using (var dc = ibg.RenderOpen()) dc.DrawRectangle(win.Background, null, new Rect(0, 0, (int)ir.ActualWidth, (int)ir.ActualHeight));
+            irb.Render(ibg); irb.Render(ir);
+            var ienc = new System.Windows.Media.Imaging.PngBitmapEncoder(); ienc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(irb));
+            using (var ifs = System.IO.File.Create(System.IO.Path.Combine(dir, $"{prefix}-{file}.png"))) ienc.Save(ifs);
+        }
+        InvoicesPage.SetTab("Invoices");
 
         // dialogs (rendered, not shown)
         Dialogs.CaptureDir = dir;
