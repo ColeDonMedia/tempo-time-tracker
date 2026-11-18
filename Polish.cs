@@ -27,7 +27,7 @@ public static class CalendarFeeds
         if (System.Net.IPAddress.IsLoopback(ip)) return true;
         if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
         if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
-            return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6UniqueLocal || ip.Equals(System.Net.IPAddress.IPv6None);
+            return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6UniqueLocal || ip.IsIPv6Multicast || ip.Equals(System.Net.IPAddress.IPv6None) || ip.Equals(System.Net.IPAddress.IPv6Any);
         var b = ip.GetAddressBytes();
         return b[0] == 10 || b[0] == 127 || b[0] == 0 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168)
                || (b[0] == 169 && b[1] == 254) || (b[0] == 100 && b[1] >= 64 && b[1] <= 127) || b[0] >= 224;

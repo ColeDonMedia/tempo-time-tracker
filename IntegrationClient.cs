@@ -135,6 +135,11 @@ public static class IntegrationClient
     // ---------- Stripe: mark invoices paid ----------
     public static DateTime? LastStripeCheckUtc { get; private set; }
     public static string? LastStripeError { get; private set; }
+    /// <summary>Not an error: e.g. "too many payments to check them all".</summary>
+    public static string? StripeNote { get; private set; }
+
+    /// <summary>True when the service itself rejected the key or address (as opposed to a network hiccup).</summary>
+    public static bool IsRejection(string? error) => error != null && (error == Loc.T("The key was refused. Check it has the permissions listed.") || error == Loc.T("Not found. Check the address."));
 
     /// <summary>Looks for completed checkouts on open invoices that use a Stripe payment link. Returns the invoices that changed.</summary>
     public static async Task<List<Invoice>> CheckStripeAsync()
@@ -165,7 +170,8 @@ public static class IntegrationClient
             catch { more = false; break; }
         }
         // a very busy Stripe account: say so instead of silently missing older payments
-        LastStripeError = more ? Loc.T("Your Stripe account has more than 1,000 payments since the oldest open invoice; older ones weren't checked. Record those by hand.") : null;
+        LastStripeError = null;
+        StripeNote = more ? Loc.T("Your Stripe account has more than 1,000 payments since the oldest open invoice; older ones weren't checked. Record those by hand.") : null;
         var changed = StripeSync.Apply(payments, State.Data.Invoices);
         if (changed.Count > 0) State.Notify();
         return changed;

@@ -85,6 +85,7 @@ public static class IntegrationsUi
             line.Children.Add(stt);
             line.Children.Add(Ui.Btn("Check Stripe now", async () => { var changed = await IntegrationClient.CheckStripeAsync(); AnnounceStripe(changed, true); rebuild(); }, "GhostButton"));
             sp.Children.Add(line);
+            if (IntegrationClient.StripeNote is string note) sp.Children.Add(Ui.Text(note, 12, "WarnBrush", wrap: true).WithMargin(0, 4, 0, 0));
         }
         return block(sp);
     }
@@ -148,6 +149,12 @@ public static class IntegrationsUi
         State.Toast(Loc.F("Checking your {0} key…", s.Name));
         var e = await IntegrationClient.TestAsync(s.Id);
         if (e == null) { State.Toast(Loc.F("{0} connected.", s.Name)); rebuild(); return; }
+        if (!IntegrationClient.IsRejection(e))
+        {
+            // a network hiccup isn't the key's fault: keep it, say so, and let Test try again later
+            State.Toast($"{s.Name}: {e} " + Loc.T("Your key was saved; use Test to try again."), true);
+            rebuild(); return;
+        }
         Disconnect(s.Id);   // never keep a key that doesn't work
         rebuild();
         Connect(s, rebuild, e, siteText, emailText);

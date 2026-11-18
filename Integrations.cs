@@ -192,7 +192,8 @@ public static class WorkItems
             if (!doc.RootElement.TryGetProperty("issues", out var issues) || issues.ValueKind != JsonValueKind.Array) return list;
             foreach (var i in issues.EnumerateArray())
             {
-                var key = S(i, "key");
+                var key = Clean(S(i, "key"));
+                if (key.Length > 64) key = key[..64];
                 var f = i.TryGetProperty("fields", out var fv) ? fv : default;
                 var summary = Clean(S(f, "summary"));
                 var project = f.ValueKind == JsonValueKind.Object && f.TryGetProperty("project", out var p) ? S(p, "name") : "";
