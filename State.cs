@@ -313,6 +313,8 @@ public static class Fmt
         var m = (long)Math.Round(ms / 60000.0);
         return $"{m / 60}h {m % 60:00}m";
     }
+    /// <summary>Live clock for the mini timer: whole hours and minutes, counted down (59 s is still 0h 00m).</summary>
+    public static string ClockHm(long ms) { var m = Math.Max(0, ms) / 60000; return $"{m / 60}h {m % 60:00}m"; }
     public static string Clock(long ms) { var s = ms / 1000; return $"{s / 3600:00}:{s / 60 % 60:00}:{s % 60:00}"; }
     public static string Time(DateTime local) =>
         local.ToString(State.Data.Settings.Use24Hour ? "HH:mm" : "h:mm tt", CultureInfo.CurrentCulture);

@@ -26,6 +26,7 @@ public static class Backdrop
 
     public static void Apply(Window w)
     {
+        if (w is MiniWindow) return;                                  // draws its own rounded glass card
         var h = new WindowInteropHelper(w).Handle;
         if (h == IntPtr.Zero) return;
         int dark = App.IsDark ? 1 : 0;

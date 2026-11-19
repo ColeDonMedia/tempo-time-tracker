@@ -15,7 +15,7 @@ namespace Tempo;
 /// </summary>
 public sealed class MiniWindow : Window
 {
-    public const double MiniWidth = 200, MiniHeight = 100;
+    public const double MiniWidth = 200, MiniHeight = 100, Radius = 16;
 
     TextBlock clock = null!;
     ComboBox combo = null!;
@@ -40,7 +40,9 @@ public sealed class MiniWindow : Window
         Topmost = State.Data.Settings.MiniPinned;
         WindowStartupLocation = WindowStartupLocation.Manual;
 
-        SourceInitialized += (_, _) => Backdrop.Apply(this);
+        // Drawn by Tempo itself (not the system backdrop) so the corners can be properly rounded.
+        AllowsTransparency = true;
+        Background = Brushes.Transparent;
         PreviewKeyDown += OnKey;
         State.Changed += () => Dispatcher.BeginInvoke(new Action(() => { if (IsVisible) Build(); }), DispatcherPriority.Background);
         State.ToastRequested += (msg, _) => { if (IsVisible) Say(msg); };
@@ -99,7 +101,7 @@ public sealed class MiniWindow : Window
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition());
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        clock = new TextBlock { FontSize = 23, FontWeight = FontWeights.SemiBold, Text = "00:00:00", VerticalAlignment = VerticalAlignment.Center };
+        clock = new TextBlock { FontSize = 23, FontWeight = FontWeights.SemiBold, Text = "0h 00m", VerticalAlignment = VerticalAlignment.Center };
         System.Windows.Documents.Typography.SetNumeralAlignment(clock, FontNumeralAlignment.Tabular);
         top.Children.Add(clock);
 
@@ -147,8 +149,11 @@ public sealed class MiniWindow : Window
         root.Children.Add(col);
         root.MouseLeftButtonDown += Drag;
 
-        var frame = new Border { BorderThickness = new Thickness(1), Child = root };
+        // Rounded glass card: the glows are clipped to the same corners as the border.
+        root.Clip = new RectangleGeometry(new Rect(0, 0, MiniWidth - 2, MiniHeight - 2), Radius - 1, Radius - 1);
+        var frame = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(Radius), Child = root };
         frame.SetResourceReference(Border.BorderBrushProperty, "CardBorderBrush");
+        frame.SetResourceReference(Border.BackgroundProperty, "BgBrush");
         Content = frame;
         building = false;
         Tick();
@@ -219,7 +224,7 @@ public sealed class MiniWindow : Window
     void Tick()
     {
         if (clock == null) return;
-        clock.Text = Fmt.Clock(State.ElapsedMs);
+        clock.Text = Fmt.ClockHm(State.ElapsedMs);
         clock.SetResourceReference(TextBlock.ForegroundProperty, State.Running ? "TextBrush" : "MutedBrush");
         clock.ToolTip = Loc.T(State.Running ? "TIMER RUNNING" : State.HasTimer ? "TIMER PAUSED" : "READY WHEN YOU ARE");
         if (status.Visibility == Visibility.Visible && DateTime.UtcNow >= statusUntil) status.Visibility = Visibility.Collapsed;

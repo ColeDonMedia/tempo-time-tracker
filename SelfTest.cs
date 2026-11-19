@@ -917,6 +917,10 @@ public static class SelfTest
             keys[parts[0]] = parts[1..];
         }
         Check($"translation rows are well-formed ({keys.Count} keys)", bad.Count == 0, string.Join("; ", bad.Take(5)));
+        Check("mini clock: hours and minutes, never rounds up",
+            Fmt.ClockHm(0) == "0h 00m" && Fmt.ClockHm(59_999) == "0h 00m" && Fmt.ClockHm(60_000) == "0h 01m"
+            && Fmt.ClockHm(3_899_000) == "1h 04m" && Fmt.ClockHm(12L * 3_600_000 + 30 * 60_000) == "12h 30m",
+            $"{Fmt.ClockHm(59_999)} {Fmt.ClockHm(3_899_000)}");
     }
 
     // ---------- phase 4: never forget to track ----------
