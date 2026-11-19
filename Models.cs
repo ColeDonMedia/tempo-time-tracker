@@ -107,6 +107,7 @@ public class AppSettings
     public string DeviceId { get; set; } = "";
     public string MemberName { get; set; } = "";             // your name on shared entries
     public List<CalendarFeed> CalendarFeeds { get; set; } = new();
+    public bool SquareSandbox { get; set; }                  // the Square token is for Square's test account
 }
 
 public class TaxLine
@@ -179,6 +180,13 @@ public class Invoice
     public string ClientTaxId { get; set; } = "";
     public DateTime? LastReminderUtc { get; set; }
     public int RemindersSent { get; set; }
+    /// <summary>The matching invoice in the user's Square account ("" = not sent with Square).</summary>
+    public string SquareInvoiceId { get; set; } = "";
+    public int SquareVersion { get; set; }
+    public string SquareStatus { get; set; } = "";          // DRAFT | UNPAID | PARTIALLY_PAID | PAID | CANCELED | …
+    public string SquareFingerprint { get; set; } = "";     // what the draft was made from, so an edited invoice gets a fresh draft
+    public bool SquareSandbox { get; set; }                 // made in Square's test account
+    public int SquareAttempt { get; set; }                  // bumped when a draft is replaced, so request keys never repeat
 
     [JsonIgnore] public decimal GrandTotal => Total + LateFeeAmount;
     [JsonIgnore] public decimal AmountPaid => Payments.Sum(p => p.Amount);

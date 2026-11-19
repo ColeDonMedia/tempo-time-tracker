@@ -14,6 +14,9 @@ public static class IntegrationsUi
         new(IntegrationClient.Stripe, "Stripe", "Marks invoices paid when your client pays through a Stripe payment link.",
             "In Stripe: Developers → API keys → Create restricted key. Allow only 'Checkout Sessions: Read'. Then use a Stripe payment link (buy.stripe.com/…) as the invoice's pay link. Tempo adds the invoice number to the link and checks every 15 minutes.",
             "https://dashboard.stripe.com/apikeys"),
+        new(IntegrationClient.Square, "Square", "Send invoices through Square. Square emails them, takes the payment, and Tempo marks them paid.",
+            "In Square: Developer Console → sign in → create an application (free) → open it → Credentials → Production → copy the access token. Leave the box below unticked for your real (live) account. To try it with test money first, choose Sandbox instead of Production and tick the box. This token can do anything your Square account can, so keep it private.",
+            "https://developer.squareup.com/apps"),
         new(IntegrationClient.GitHub, "GitHub", "Pick an issue or pull request assigned to you as the entry description.",
             "In GitHub: Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate. Give it read-only access to Issues and Pull requests on the repositories you work on.",
             "https://github.com/settings/personal-access-tokens/new"),
@@ -87,6 +90,18 @@ public static class IntegrationsUi
             sp.Children.Add(line);
             if (IntegrationClient.StripeNote is string note) sp.Children.Add(Ui.Text(note, 12, "WarnBrush", wrap: true).WithMargin(0, 4, 0, 0));
         }
+        if (SecretStore.Has(State.Dir, IntegrationClient.Square))
+        {
+            if (State.Data.Settings.SquareSandbox)
+                sp.Children.Add(Ui.Text("Square test account (Sandbox): no real money moves.", 12, "WarnBrush", FontWeights.SemiBold, wrap: true).WithMargin(0, 4, 0, 0));
+            var st = IntegrationClient.LastSquareError is string e ? Loc.F("Last Square check failed: {0}", e)
+                   : IntegrationClient.LastSquareCheckUtc is DateTime t ? Loc.F("Last Square check: {0}", Fmt.Time(State.ToLocal(t))) : Loc.T("Square invoices are checked every 15 minutes while Tempo is open.");
+            var line = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+            var stt = Ui.Text(st, 12, IntegrationClient.LastSquareError != null ? "WarnBrush" : "FaintBrush", wrap: true); stt.VerticalAlignment = VerticalAlignment.Center; stt.Margin = new Thickness(0, 0, 8, 0);
+            line.Children.Add(stt);
+            line.Children.Add(Ui.Btn("Check Square now", async () => { var changed = await IntegrationClient.CheckSquareAsync(); AnnounceSquare(changed, true); rebuild(); }, "GhostButton"));
+            sp.Children.Add(line);
+        }
         return block(sp);
     }
 
@@ -117,13 +132,21 @@ public static class IntegrationsUi
             body.Children.Add(Ui.Text("The address you see in your browser when Jira is open.", 12, "FaintBrush", wrap: true).WithMargin(0, 0, 0, 12));
             body.Children.Add(Ui.Field("EMAIL", email));
         }
-        var (box, pwd) = Secret(s.Id == IntegrationClient.Stripe ? "RESTRICTED KEY" : "API TOKEN");
-        body.Children.Add(Ui.Field(s.Id == IntegrationClient.Stripe ? "RESTRICTED KEY" : "API TOKEN", box, 6));
+        var keyLabel = s.Id == IntegrationClient.Stripe ? "RESTRICTED KEY" : s.Id == IntegrationClient.Square ? "ACCESS TOKEN" : "API TOKEN";
+        var (box, pwd) = Secret(keyLabel);
+        body.Children.Add(Ui.Field(keyLabel, box, 6));
+        CheckBox? sandbox = null;
+        if (s.Id == IntegrationClient.Square)
+        {
+            sandbox = Ui.Check("This is a Sandbox (test) token", State.Data.Settings.SquareSandbox);
+            body.Children.Add(sandbox.WithMargin(0, 0, 0, 8));
+        }
         if (s.Id != IntegrationClient.Stripe)
             body.Children.Add(Ui.Text("Tip: tokens can expire. If this stops working later, create a new one and connect again.", 12, "FaintBrush", wrap: true).WithMargin(0, 0, 0, 4));
         body.Children.Add(Ui.Text("The key is encrypted for your Windows account and saved on this PC only. It is never included in backups, sync files or problem reports.", 12, "FaintBrush", wrap: true).WithMargin(0, 0, 0, 8));
         var err = Dialogs.ErrorLabel(); body.Children.Add(err);
         if (error != null) Dialogs.SetError(err, error);
+        var oldSandbox = State.Data.Settings.SquareSandbox;
         var ok = Dialogs.Show(Loc.F("Connect {0}", s.Name), body, "Save and test", () =>
         {
             var key = pwd.Password.Trim();
@@ -136,15 +159,16 @@ public static class IntegrationsUi
                 SecretStore.Set(State.Dir, IntegrationClient.JiraSite, norm);
                 SecretStore.Set(State.Dir, IntegrationClient.JiraEmail, email.Text.Trim());
             }
+            if (sandbox != null) { State.Data.Settings.SquareSandbox = sandbox.IsChecked == true; State.Notify(); }
             SecretStore.Set(State.Dir, s.Id, key);
             return true;
         }, 540);
         pwd.Clear();
         if (!ok) return;
-        VerifyAfterConnect(s, rebuild, site?.Text ?? "", email?.Text ?? "");
+        VerifyAfterConnect(s, rebuild, site?.Text ?? "", email?.Text ?? "", oldSandbox);
     }
 
-    static async void VerifyAfterConnect(Service s, Action rebuild, string siteText, string emailText)
+    static async void VerifyAfterConnect(Service s, Action rebuild, string siteText, string emailText, bool oldSandbox)
     {
         State.Toast(Loc.F("Checking your {0} key…", s.Name));
         var e = await IntegrationClient.TestAsync(s.Id);
@@ -156,6 +180,7 @@ public static class IntegrationsUi
             rebuild(); return;
         }
         Disconnect(s.Id);   // never keep a key that doesn't work
+        if (s.Id == IntegrationClient.Square) { State.Data.Settings.SquareSandbox = oldSandbox; State.Notify(); }   // nor the test/live switch saved with it
         rebuild();
         Connect(s, rebuild, e, siteText, emailText);
     }
@@ -165,6 +190,82 @@ public static class IntegrationsUi
         if (changed.Count == 0) { if (always) State.Toast(IntegrationClient.LastStripeError ?? Loc.T("No new Stripe payments."), IntegrationClient.LastStripeError != null); return; }
         var paid = changed.Where(i => i.Status == "Paid").Select(i => i.Number).ToList();
         State.Toast(paid.Count > 0 ? Loc.F("Paid through Stripe: {0}", string.Join(", ", paid)) : Loc.F("Stripe payment recorded on {0}", string.Join(", ", changed.Select(i => i.Number))));
+    }
+
+    public static void AnnounceSquare(List<Invoice> changed, bool always = false)
+    {
+        if (changed.Count == 0) { if (always) State.Toast(IntegrationClient.LastSquareError ?? Loc.T("No new Square payments."), IntegrationClient.LastSquareError != null); return; }
+        var paid = changed.Where(i => i.Status == "Paid").Select(i => i.Number).ToList();
+        State.Toast(paid.Count > 0 ? Loc.F("Paid through Square: {0}", string.Join(", ", paid)) : Loc.F("Square payment recorded on {0}", string.Join(", ", changed.Select(i => i.Number))));
+    }
+
+    /// <summary>Square's status for an invoice that was sent with it, in plain words.</summary>
+    public static string SquareStatusText(string status) => status switch
+    {
+        "DRAFT" => Loc.T("Square: draft, not sent"),
+        "UNPAID" or "SCHEDULED" or "PAYMENT_PENDING" => Loc.T("Square: sent, awaiting payment"),
+        "PARTIALLY_PAID" => Loc.T("Square: partly paid"),
+        "PAID" => Loc.T("Square: paid"),
+        "PARTIALLY_REFUNDED" or "REFUNDED" => Loc.T("Square: refunded"),
+        "CANCELED" => Loc.T("Square: canceled"),
+        "FAILED" => Loc.T("Square: payment failed"),
+        _ => Loc.T("Square"),
+    };
+
+    /// <summary>
+    /// "Send with Square": prepares the draft, shows exactly who gets it and how much, and only publishes after the user agrees.
+    /// </summary>
+    public static async void SendWithSquare(Invoice inv, Action rebuild)
+    {
+        State.Toast(Loc.F("Preparing {0} in Square…", inv.Number));
+        var id = inv.Id;
+        var (err, total, recipient) = await IntegrationClient.PrepareSquareAsync(inv);
+        rebuild();
+        if (err != null) { State.Toast("Square: " + err, true); return; }
+        var fp = inv.SquareFingerprint; var squareId = inv.SquareInvoiceId;
+        var money = Fmt.Money(StripeSync.FromMinor(total, inv.Currency), inv.Currency);
+        // the email shown is the one Square itself will send to
+        var msg = Loc.F("Square will email invoice {0} to {1} and collect {2}.", inv.Number, recipient, money) + " "
+                + Loc.T(inv.Currency.Equals("USD", StringComparison.OrdinalIgnoreCase) ? "Your client pays on Square's page by card or bank transfer." : "Your client pays on Square's page by card.");
+        if (inv.SquareSandbox) msg += "\n\n" + Loc.T("This is your Square test account (Sandbox): no real email or money moves.");
+        msg += "\n\n" + Loc.T("Cancel keeps it as a draft in Square. Nothing is emailed.");
+        if (!Dialogs.Confirm(Loc.T("Send with Square"), msg, Loc.T("Send now")))
+        {
+            State.Toast(Loc.F("{0} is saved as a draft in Square. Nothing was sent.", inv.Number));
+            return;
+        }
+        // sync may have swapped or changed the invoice while the dialog was open: only send exactly what was confirmed
+        var now = State.Data.Invoices.FirstOrDefault(i => i.Id == id);
+        if (now == null || now.SquareInvoiceId != squareId || now.SquareFingerprint != fp || SquareSync.Fingerprint(now) != fp || now.Status != "Issued")
+        {
+            State.Toast(Loc.T("The invoice changed while you were deciding, so nothing was sent. Try again."), true); rebuild(); return;
+        }
+        var pe = await IntegrationClient.PublishSquareAsync(now);
+        rebuild();
+        State.Toast(pe == null ? Loc.F("Square sent {0} to {1}.", now.Number, recipient) : "Square: " + pe, pe != null);
+    }
+
+    public static async void OpenInSquare(Invoice inv)
+    {
+        var url = await IntegrationClient.SquareLinkAsync(inv);
+        if (url == null) { State.Toast(Loc.T("Square didn't give a link for this invoice yet. Try again in a minute."), true); return; }
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }   // checked: Square's own https page
+        catch { State.Toast(Loc.T("Windows couldn't open your browser."), true); }
+    }
+
+    /// <summary>True when the invoice is still payable in Square (so voiding or deleting it in Tempo should cancel it there too).</summary>
+    public static bool OpenInSquareAccount(Invoice inv) =>
+        inv.SquareInvoiceId.Length > 0 && inv.SquareStatus is not ("" or "PAID" or "CANCELED" or "REFUNDED" or "PARTIALLY_REFUNDED" or "FAILED");
+
+    /// <summary>After a void or delete in Tempo: cancel the Square invoice too, and say clearly if that didn't work.</summary>
+    public static async void CancelInSquare(Invoice inv, Action rebuild, bool quietOnSuccess = false)
+    {
+        var e = await IntegrationClient.CancelSquareAsync(inv);
+        rebuild();
+        if (e == null && quietOnSuccess) return;
+        var paid = Loc.T("Your client has already paid this invoice in Square. Refund it there if needed.");
+        if (e == paid) { State.Toast($"{inv.Number}: {paid}", true); return; }
+        State.Toast(e == null ? Loc.F("{0} was canceled in Square too.", inv.Number) : Loc.F("Couldn't cancel {0} in Square: {1} Cancel it in your Square dashboard.", inv.Number, e), e != null);
     }
 
     /// <summary>A small button that fills <paramref name="target"/> with one of your assigned tasks. Null when no service is connected.</summary>

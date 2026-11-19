@@ -50,6 +50,8 @@ public static class UiTest
         return bad;
     }
 
+    static string AllText(DependencyObject root) => string.Join("\n", Walk(root).OfType<TextBlock>().Where(t => t.IsVisible).Select(t => t.Text));
+
     static List<string> LeftoverPlaceholders(DependencyObject root) =>
         Walk(root).OfType<TextBlock>().Where(t => t.IsVisible && System.Text.RegularExpressions.Regex.IsMatch(t.Text ?? "", @"\{\d\}")).Select(t => t.Text).Take(3).ToList();
 
@@ -107,7 +109,13 @@ public static class UiTest
             // Nothing is fetched: the picker only calls GitHub when it's clicked.
             var realKey = SecretStore.Get(State.Dir, IntegrationClient.GitHub);   // put back whatever was there before
             SecretStore.Set(State.Dir, IntegrationClient.GitHub, "test-token-not-real");
-            foreach (var key in new[] { "Overview", "Settings" })
+            // Square too (nothing is fetched until a button is clicked); one invoice pretends it was already sent
+            var realSquare = SecretStore.Get(State.Dir, IntegrationClient.Square);
+            SecretStore.Set(State.Dir, IntegrationClient.Square, "test-token-not-real");
+            var openInvs = State.Data.Invoices.Where(i => i.Kind == "Invoice" && i.Status == "Issued" && i.AmountPaid == 0).ToList();
+            var sentInv = openInvs.Skip(1).FirstOrDefault();
+            if (sentInv != null) { sentInv.SquareInvoiceId = "inv:uitest"; sentInv.SquareStatus = "UNPAID"; sentInv.SquareSandbox = State.Data.Settings.SquareSandbox; }
+            foreach (var key in new[] { "Overview", "Settings", "Invoices" })
             {
                 try
                 {
@@ -115,9 +123,19 @@ public static class UiTest
                     var root = (FrameworkElement)win.Content; root.UpdateLayout();
                     var bad = Unnamed(root);
                     Check($"[connected] {key}: builds, every control named", bad.Count == 0, string.Join(", ", bad.Distinct().Take(6)));
+                    if (key == "Invoices")
+                    {
+                        var texts = AllText(root);
+                        var names = string.Join("\n", Walk(root).OfType<ButtonBase>().Select(bb => UIElementAutomationPeer.CreatePeerForElement(bb)?.GetName() ?? ""));
+                        Check("[connected] Invoices: open invoices offer Send with Square", openInvs.Count == 0 || names.Contains("Send with Square"));
+                        Check("[connected] Invoices: a sent invoice offers Square's payment page", sentInv == null || names.Contains("Open Square's payment page"));
+                        Check("[connected] Invoices: a sent invoice shows Square's status", sentInv == null || texts.Contains(IntegrationsUi.SquareStatusText("UNPAID")));
+                    }
                 }
                 catch (Exception ex) { Check($"[connected] {key}: builds", false, ex.Message); }
             }
+            if (sentInv != null) { sentInv.SquareInvoiceId = ""; sentInv.SquareStatus = ""; }
+            SecretStore.Set(State.Dir, IntegrationClient.Square, realSquare);
             Dialogs.CaptureDir = System.IO.Path.GetDirectoryName(path);
             Dlg("entry-with-picker", () => EntriesPage.EditEntry(null));
             Dialogs.CaptureDir = null;

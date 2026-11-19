@@ -133,6 +133,7 @@ public static class Sync
             case Invoice i:
                 i.FilePath = ""; i.LogoPath = "";
                 if (!SafeOpen.IsPayLink(i.PayLink ?? "")) i.PayLink = "";
+                SquareSync.SanitizeLink(i);
                 break;
             case Expense e: e.ReceiptPath = ""; break;
         }
@@ -183,7 +184,8 @@ public static class Sync
                 try { obj = item.Data.Deserialize(kind.Type); } catch { continue; }
                 if (obj == null || IdOf(obj) != item.Id) continue;
                 Sanitize(obj);
-                if (present.TryGetValue(key, out var old)) kind.List[kind.List.IndexOf(old.Obj)] = obj; else kind.List.Add(obj);
+                if (present.TryGetValue(key, out var old) && old.Obj is Invoice oldInv && obj is Invoice newInv) SquareSync.KeepLink(oldInv, newInv);
+                if (old.Obj != null) kind.List[kind.List.IndexOf(old.Obj)] = obj; else kind.List.Add(obj);
                 present[key] = (kind, obj, JsonSerializer.Serialize(obj, kind.Type));
                 state.Seen[key] = new Seen(Hash(present[key].Json), item.StampUtc);
                 state.Deleted.Remove(key);

@@ -451,6 +451,13 @@ public class InvoicesPage : PageBase
         l.Children.Add(Ui.Text(Loc.F(inv.Kind == "Quote" ? "{0}  ·  Issued {1}  ·  Valid until {2}" : "{0}  ·  Issued {1}  ·  Due {2}",
             inv.ProjectName, Fmt.Date(State.ToLocal(inv.IssuedUtc)), Fmt.Date(State.ToLocal(inv.DueUtc))), 12.5, "MutedBrush"));
         if (inv.LateFeeAmount > 0) l.Children.Add(Ui.Text($"+ {Loc.T("Late fee")} {Fmt.Money(inv.LateFeeAmount, inv.Currency)}", 12, "DangerBrush"));
+        if (inv.SquareInvoiceId.Length > 0 && inv.SquareStatus.Length > 0)
+        {
+            // say which Square account it lives in: always for the test account, and for live ones while the test account is connected
+            var acct = inv.SquareSandbox ? " · " + Loc.T("test account") : State.Data.Settings.SquareSandbox ? " · " + Loc.T("live account") : "";
+            var bad = inv.SquareStatus is "CANCELED" or "FAILED" or "REFUNDED" or "PARTIALLY_REFUNDED";
+            l.Children.Add(Ui.Text(IntegrationsUi.SquareStatusText(inv.SquareStatus) + acct, 12, bad ? "WarnBrush" : "AccentBrush"));
+        }
         g.Children.Add(l);
 
         var totals = new StackPanel { Margin = new Thickness(12, 0, 14, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -479,6 +486,23 @@ public class InvoicesPage : PageBase
                 acts.Children.Add(Ui.IconBtn(Icons.Bell, inv.RemindersSent > 0 ? Loc.F("Send another reminder (last sent {0})", Fmt.Date(State.ToLocal(inv.LastReminderUtc ?? DateTime.UtcNow))) : "Send payment reminder", () => Email(inv, true)));
             if (LateFeeDue(inv))
                 acts.Children.Add(Ui.Btn(Loc.F("Apply late fee ({0}%)", Fmt.Dec(State.Data.Settings.LateFeePercent)), () => ApplyLateFee(inv), "GhostButton").WithMargin(0, 0, 4, 0));
+            if (inv.Status == "Issued" && SecretStore.Has(State.Dir, IntegrationClient.Square))
+            {
+                var draftOnly = inv.SquareInvoiceId.Length == 0 || inv.SquareStatus == "DRAFT";
+                if (inv.SquareInvoiceId.Length > 0 && inv.SquareSandbox != State.Data.Settings.SquareSandbox)
+                {
+                    const string other = "This invoice is linked to your other Square account (test or live). Connect that account again in Settings → Integrations to use it.";
+                    acts.Children.Add(Ui.IconBtn(Icons.Sliders, other, () => State.Toast(Loc.T(other), true)));   // points to Settings, not "send"
+                }
+                else if (draftOnly && inv.AmountPaid == 0)
+                {
+                    var send = Ui.IconBtn(Icons.Upload, inv.SquareStatus == "DRAFT" ? "Review and send the Square draft" : "Send with Square", () => IntegrationsUi.SendWithSquare(inv, Build));
+                    send.IsEnabled = !IntegrationClient.SquareBusy(inv);
+                    acts.Children.Add(send);
+                }
+                else if (!draftOnly)
+                    acts.Children.Add(Ui.IconBtn(Icons.Link, "Open Square's payment page", () => IntegrationsUi.OpenInSquare(inv)));
+            }
             if (inv.Status == "Issued")
             {
                 acts.Children.Add(Ui.IconBtn(Icons.Dollar, "Record payment", () => RecordPayment(inv)));
@@ -489,10 +513,15 @@ public class InvoicesPage : PageBase
             if (inv.Status != "Void")
                 acts.Children.Add(Ui.IconBtn(Icons.Ban, "Void invoice and release its entries", () =>
                 {
-                    if (!Dialogs.Confirm("Void invoice", Loc.F("Void {0}? Its {1} time entries become unbilled again so you can re-invoice them.", inv.Number, inv.SessionIds.Count), "Void invoice", true)) return;
+                    var vmsg = Loc.F("Void {0}? Its {1} time entries become unbilled again so you can re-invoice them.", inv.Number, inv.SessionIds.Count);
+                    var cancelSquare = CanCancelInSquare(inv);
+                    if (cancelSquare) vmsg += "\n\n" + Loc.T("Tempo will cancel it in Square too, so your client can't pay it there.");
+                    else if (IntegrationsUi.OpenInSquareAccount(inv)) vmsg += "\n\n" + Loc.T("It stays open in Square. Cancel it in your Square dashboard too, so your client isn't asked to pay.");
+                    if (!Dialogs.Confirm("Void invoice", vmsg, "Void invoice", true)) return;
                     inv.Status = "Void";
                     Release(inv);
                     State.Notify(); State.Toast(Loc.F("{0} voided", inv.Number));
+                    if (cancelSquare) IntegrationsUi.CancelInSquare(inv, Build);
                 }, true));
         }
         else
@@ -526,6 +555,9 @@ public class InvoicesPage : PageBase
         var msg = Loc.F("Delete {0} ({1})?", inv.Number, Fmt.Money(inv.GrandTotal, inv.Currency));
         if (inv.Status == "Paid") msg += "\n\n" + Loc.T("It is marked as paid; deleting removes it from your records.");
         if (held > 0) msg += "\n\n" + Loc.N(held, "Its {0} time entry becomes unbilled again.", "Its {0} time entries become unbilled again.");
+        var cancelSquare = CanCancelInSquare(inv);
+        if (cancelSquare) msg += "\n\n" + Loc.T("Tempo will cancel it in Square too, so your client can't pay it there.");
+        else if (IntegrationsUi.OpenInSquareAccount(inv)) msg += "\n\n" + Loc.T("It stays in Square. Cancel or delete it in your Square dashboard too.");
         msg += "\n\n" + Loc.T("You can restore it from Settings → Recently deleted. The PDF file you exported is not touched.");
         if (!Dialogs.Confirm("Delete invoice", msg, "Delete invoice", true)) return;
         var t = TrashBin.Add("Invoice", inv, inv.Number + " · " + inv.ClientName);
@@ -534,13 +566,21 @@ public class InvoicesPage : PageBase
         if (inv.Kind == "Invoice") State.Data.InvoiceNumber = State.NextInvoiceNumber();
         State.Notify();
         State.ToastUndo(Loc.F("{0} deleted", inv.Number), t);
+        if (cancelSquare) IntegrationsUi.CancelInSquare(inv, () => { }, quietOnSuccess: true);   // keep the undo toast unless it failed
     }
+
+    /// <summary>Square is connected (same test/live account) and the invoice is still payable there.</summary>
+    static bool CanCancelInSquare(Invoice inv) =>
+        IntegrationsUi.OpenInSquareAccount(inv) && SecretStore.Has(State.Dir, IntegrationClient.Square) && inv.SquareSandbox == State.Data.Settings.SquareSandbox;
 
     static void MarkPaid(Invoice inv)
     {
         if (inv.Balance > 0) inv.Payments.Add(new Payment { DateUtc = DateTime.UtcNow, Amount = inv.Balance });
         inv.Status = "Paid"; inv.PaidUtc = DateTime.UtcNow;
-        State.Notify(); State.Toast(Loc.F("{0} marked as paid", inv.Number));
+        State.Notify();
+        State.Toast(IntegrationsUi.OpenInSquareAccount(inv)
+            ? Loc.F("{0} marked as paid. It's still open in Square: cancel it there if your client paid another way.", inv.Number)
+            : Loc.F("{0} marked as paid", inv.Number));
     }
 
     static void MarkUnpaid(Invoice inv)

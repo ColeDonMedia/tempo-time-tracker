@@ -209,6 +209,174 @@ public static class SelfTest
         SyncTests();
         PolishTests();
         IntegrationTests();
+        SquareTests();
+    }
+
+    // ---------- phase 12: Square invoices ----------
+    static void SquareTests()
+    {
+        System.Text.Json.JsonElement J(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement;
+        Invoice Sq(string cur = "USD")
+        {
+            var i = new Invoice { Id = "0123456789abcdef0123456789abcdef", Number = "INV-2026-041", Currency = cur, Status = "Issued", ClientName = "Hashmark Studio", ClientEmail = "ap@hashmark.example",
+                                  TimeZoneId = "UTC", IssuedUtc = new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc), DueUtc = new DateTime(2026, 12, 1, 12, 0, 0, DateTimeKind.Utc) };
+            i.Lines.Add(new InvoiceLine { Description = "Design \"review\" & fixes", Hours = 2.5m, Rate = 80m, Amount = 200m, Kind = "Time" });
+            i.Lines.Add(new InvoiceLine { Description = "Stock photo", Amount = 33.33m, Kind = "Expense" });
+            i.DiscountPercent = 10m;
+            i.Taxes.Add(new TaxLine { Label = "GST", Percent = 5m });
+            i.Taxes.Add(new TaxLine { Label = "PST", Percent = 7m });
+            InvoiceService.ApplyTotals(i);
+            return i;
+        }
+
+        Check("square: production and sandbox addresses", SquareSync.Api(false) == "https://connect.squareup.com" && SquareSync.Api(true) == "https://connect.squareupsandbox.com");
+        Check("square: amounts in the smallest currency unit", SquareSync.ToMinor(1234.56m, "USD") == 123456 && SquareSync.ToMinor(5000m, "JPY") == 5000 && SquareSync.ToMinor(1.5m, "KWD") == 1500);
+
+        var ok = Sq();
+        Check("square: an open invoice with an email can be sent", SquareSync.CannotSend(ok, "USD") == null, SquareSync.CannotSend(ok, "USD"));
+        Check("square: refuses a currency the Square location doesn't use", SquareSync.CannotSend(ok, "CAD") != null);
+        var noMail = Sq(); noMail.ClientEmail = "";
+        var badMail = Sq(); badMail.ClientEmail = "not an email";
+        Check("square: needs the client's email (Square emails the invoice)", SquareSync.CannotSend(noMail, "USD") != null && SquareSync.CannotSend(badMail, "USD") != null);
+        var paidInv = Sq(); paidInv.Status = "Paid";
+        var quote = Sq(); quote.Kind = "Quote"; quote.Status = "Sent";
+        var partly = Sq(); partly.Payments.Add(new Payment { Amount = 10m });
+        var neg = Sq(); neg.Lines.Add(new InvoiceLine { Description = "Credit", Amount = -20m, Kind = "Custom" }); InvoiceService.ApplyTotals(neg);
+        Check("square: only open, unpaid invoices without negative lines", SquareSync.CannotSend(paidInv, "USD") != null && SquareSync.CannotSend(quote, "USD") != null
+            && SquareSync.CannotSend(partly, "USD") != null && SquareSync.CannotSend(neg, "USD") != null);
+
+        var fp = SquareSync.Fingerprint(ok);
+        var edited = Sq(); edited.Lines[0].Amount = 240m; InvoiceService.ApplyTotals(edited);
+        var withPay = Sq(); withPay.Payments.Add(new Payment { Amount = 5m });
+        Check("square: fingerprint is stable, changes when the bill changes", fp.Length == 16 && fp.All(Uri.IsHexDigit) && fp == SquareSync.Fingerprint(Sq())
+            && fp != SquareSync.Fingerprint(edited) && fp == SquareSync.Fingerprint(withPay));
+
+        var retry = Sq(); retry.SquareAttempt = 1;
+        var ck = SquareSync.CustomerKey("AP@Hashmark.example ");
+        Check("square: request keys fit Square's limits and never repeat after a draft is replaced",
+            SquareSync.OrderKey(ok, fp, false).Length <= 192 && SquareSync.InvoiceKey(ok, fp).Length <= 128 && SquareSync.PublishKey(ok, fp).Length <= 128 && ck.Length <= 45
+            && SquareSync.OrderKey(ok, fp, false) != SquareSync.OrderKey(ok, fp, true) && SquareSync.InvoiceKey(ok, fp) != SquareSync.InvoiceKey(retry, fp)
+            && SquareSync.InvoiceKey(ok, fp) != SquareSync.PublishKey(ok, fp) && SquareSync.OrderKey(ok, fp, false).Length > 0);
+        Check("square: customer key is the same for any spelling of the email and doesn't contain it", ck == SquareSync.CustomerKey("ap@hashmark.example") && !ck.Contains("hashmark"));
+
+        // order: Tempo's lines, discount and taxes apply to the work lines only; a late fee is never discounted or taxed
+        var lf = Sq(); lf.LateFeeAmount = 15m;
+        var o = J(SquareSync.OrderBody(lf, "L1", "C1", false, "key-1"));
+        var order = o.GetProperty("order");
+        var li = order.GetProperty("line_items");
+        Check("square order: location, customer, key and one line per Tempo line plus the late fee",
+            o.GetProperty("idempotency_key").GetString() == "key-1" && order.GetProperty("location_id").GetString() == "L1" && order.GetProperty("customer_id").GetString() == "C1"
+            && li.GetArrayLength() == 3 && li[0].GetProperty("quantity").GetString() == "1" && li[0].GetProperty("base_price_money").GetProperty("amount").GetInt64() == 20000
+            && li[0].GetProperty("base_price_money").GetProperty("currency").GetString() == "USD" && li[0].GetProperty("name").GetString() == "Design \"review\" & fixes"
+            && li[1].GetProperty("base_price_money").GetProperty("amount").GetInt64() == 3333 && li[2].GetProperty("base_price_money").GetProperty("amount").GetInt64() == 1500);
+        var taxes = order.GetProperty("taxes");
+        Check("square order: each tax by name and rate, applied to the work lines only",
+            taxes.GetArrayLength() == 2 && taxes[0].GetProperty("name").GetString() == "GST" && taxes[0].GetProperty("percentage").GetString() == "5" && taxes[1].GetProperty("percentage").GetString() == "7"
+            && taxes[0].GetProperty("scope").GetString() == "LINE_ITEM" && li[0].GetProperty("applied_taxes").GetArrayLength() == 2 && li[1].GetProperty("applied_taxes").GetArrayLength() == 2
+            && !li[2].TryGetProperty("applied_taxes", out _));
+        var disc = order.GetProperty("discounts");
+        Check("square order: the discount as a fixed amount on the work lines only",
+            disc.GetArrayLength() == 1 && disc[0].GetProperty("amount_money").GetProperty("amount").GetInt64() == SquareSync.ToMinor(lf.DiscountAmount, "USD") && disc[0].GetProperty("scope").GetString() == "LINE_ITEM"
+            && li[0].GetProperty("applied_discounts").GetArrayLength() == 1 && !li[2].TryGetProperty("applied_discounts", out _));
+        var flat = J(SquareSync.OrderBody(lf, "L1", "C1", true, "key-2")).GetProperty("order");
+        var flatLines = flat.GetProperty("line_items");
+        long flatSum = 0; foreach (var l in flatLines.EnumerateArray()) flatSum += l.GetProperty("base_price_money").GetProperty("amount").GetInt64();
+        Check("square order: taxes as fixed lines add up to exactly Tempo's total",
+            !flat.TryGetProperty("taxes", out _) && flatLines.GetArrayLength() == 5 && flatSum - SquareSync.ToMinor(lf.DiscountAmount, "USD") == SquareSync.ToMinor(lf.GrandTotal, "USD"), $"{flatSum} vs {lf.GrandTotal}");
+        var rc = Sq(); rc.ReverseCharge = true; InvoiceService.ApplyTotals(rc);
+        Check("square order: reverse charge sends no tax", !J(SquareSync.OrderBody(rc, "L1", "C1", false, "k")).GetProperty("order").TryGetProperty("taxes", out _));
+        var longName = Sq(); longName.Lines[0].Description = new string('x', 2000); longName.Lines[1].Description = "";
+        var ln = J(SquareSync.OrderBody(longName, "L1", "C1", false, "k")).GetProperty("order").GetProperty("line_items");
+        Check("square order: line names are trimmed to Square's limit and never empty", ln[0].GetProperty("name").GetString()!.Length <= 512 && ln[1].GetProperty("name").GetString()!.Length > 0);
+
+        // invoice
+        var ib = J(SquareSync.InvoiceBody(ok, "L1", "O1", "C1", "ik", new DateTime(2026, 11, 18)));
+        var iv = ib.GetProperty("invoice");
+        var pr = iv.GetProperty("payment_requests")[0];
+        Check("square invoice: order, customer, number, emailed, balance due on the due date",
+            ib.GetProperty("idempotency_key").GetString() == "ik" && iv.GetProperty("location_id").GetString() == "L1" && iv.GetProperty("order_id").GetString() == "O1"
+            && iv.GetProperty("primary_recipient").GetProperty("customer_id").GetString() == "C1" && iv.GetProperty("invoice_number").GetString() == "INV-2026-041"
+            && iv.GetProperty("delivery_method").GetString() == "EMAIL" && pr.GetProperty("request_type").GetString() == "BALANCE" && pr.GetProperty("due_date").GetString() == "2026-12-01");
+        var late = J(SquareSync.InvoiceBody(ok, "L1", "O1", "C1", "ik", new DateTime(2026, 12, 20))).GetProperty("invoice").GetProperty("payment_requests")[0];
+        Check("square invoice: a due date already past becomes today", late.GetProperty("due_date").GetString() == "2026-12-20");
+        var gbp = J(SquareSync.InvoiceBody(Sq("GBP"), "L1", "O1", "C1", "ik", new DateTime(2026, 11, 18))).GetProperty("invoice").GetProperty("accepted_payment_methods");
+        var usd = iv.GetProperty("accepted_payment_methods");
+        Check("square invoice: card payments on, bank transfer only where Square offers it (US)",
+            usd.GetProperty("card").GetBoolean() && usd.GetProperty("bank_account").GetBoolean() && gbp.GetProperty("card").GetBoolean() && !gbp.GetProperty("bank_account").GetBoolean());
+
+        // customers
+        Check("square customer: search by exact email", J(SquareSync.CustomerSearchBody(" ap@hashmark.example ")).GetProperty("query").GetProperty("filter").GetProperty("email_address").GetProperty("exact").GetString() == "ap@hashmark.example");
+        var cb = J(SquareSync.CustomerBody(ok, "ck"));
+        Check("square customer: created with email, company name and key", cb.GetProperty("email_address").GetString() == "ap@hashmark.example" && cb.GetProperty("company_name").GetString() == "Hashmark Studio" && cb.GetProperty("idempotency_key").GetString() == "ck");
+        Check("square customer: id from a search or a create, null otherwise",
+            SquareSync.CustomerId("{\"customers\":[{\"id\":\"C1\"}]}") == "C1" && SquareSync.CustomerId("{\"customer\":{\"id\":\"C2\"}}") == "C2" && SquareSync.CustomerId("{}") == null && SquareSync.CustomerId("[") == null);
+
+        // responses
+        var po = SquareSync.ParseOrder("{\"order\":{\"id\":\"O1\",\"total_money\":{\"amount\":26040,\"currency\":\"USD\"}}}");
+        Check("square: reads the order's id and total", po is { Id: "O1", TotalMinor: 26040, Currency: "USD" } && SquareSync.ParseOrder("{}") == null);
+        var loc = SquareSync.ParseLocation("{\"location\":{\"id\":\"L1\",\"currency\":\"USD\",\"status\":\"ACTIVE\"}}");
+        Check("square: reads the main location", loc is { Id: "L1", Currency: "USD", Status: "ACTIVE" } && SquareSync.ParseLocation("nope") == null);
+        var invJson = "{\"invoice\":{\"id\":\"inv:0-abc\",\"version\":3,\"status\":\"PARTIALLY_PAID\",\"public_url\":\"https://squareup.com/pay-invoice/inv:0-abc\",\"payment_requests\":["
+                    + "{\"computed_amount_money\":{\"amount\":10000,\"currency\":\"USD\"},\"total_completed_amount_money\":{\"amount\":10000,\"currency\":\"USD\"}},"
+                    + "{\"computed_amount_money\":{\"amount\":16040,\"currency\":\"USD\"},\"total_completed_amount_money\":{\"amount\":2500,\"currency\":\"USD\"}}]}}";
+        var st = SquareSync.ParseInvoice(invJson);
+        Check("square: reads an invoice's status, version, link and paid amount", st is { Id: "inv:0-abc", Version: 3, Status: "PARTIALLY_PAID", PaidMinor: 12500, DueMinor: 26040, Currency: "USD" }
+            && st.PublicUrl == "https://squareup.com/pay-invoice/inv:0-abc" && SquareSync.ParseInvoice("{\"invoice\":{}}") == null);
+
+        // payments back into Tempo
+        var linked = Sq(); linked.SquareInvoiceId = "inv:0-abc";
+        var t1 = new DateTime(2026, 11, 20, 9, 0, 0, DateTimeKind.Utc);
+        var s1 = new SquareInvoiceState("inv:0-abc", "PARTIALLY_PAID", 3, 10000, SquareSync.ToMinor(linked.GrandTotal, "USD"), "USD", "", "INV-2026-041", "L1", "ap@hashmark.example");
+        Check("square sync: a partial payment is recorded once", SquareSync.Apply(linked, s1, t1) && linked.AmountPaid == 100m && linked.Status == "Issued" && linked.SquareStatus == "PARTIALLY_PAID"
+            && !SquareSync.Apply(linked, s1, t1) && linked.Payments.Count == 1 && linked.Payments[0].Note == "Square");
+        var s2 = s1 with { Status = "PAID", Version = 4, PaidMinor = SquareSync.ToMinor(linked.GrandTotal, "USD") };
+        Check("square sync: the rest is recorded and the invoice marked paid", SquareSync.Apply(linked, s2, t1.AddDays(1)) && linked.Status == "Paid" && linked.Balance == 0 && linked.Payments.Count == 2
+            && linked.PaidUtc == t1.AddDays(1) && linked.SquareVersion == 4);
+        var other = Sq(); other.SquareInvoiceId = "inv:other";
+        var eur = Sq(); eur.SquareInvoiceId = "inv:0-abc"; eur.Currency = "EUR";
+        var voided = Sq(); voided.SquareInvoiceId = "inv:0-abc"; voided.Status = "Void";
+        Check("square sync: never applies another invoice's, another currency's or a voided invoice's payments",
+            !SquareSync.Apply(other, s1, t1) && other.Payments.Count == 0 && !SquareSync.Apply(eur, s1, t1) && eur.Payments.Count == 0 && !SquareSync.Apply(voided, s1, t1) && voided.Payments.Count == 0);
+        var refunded = Sq(); refunded.SquareInvoiceId = "inv:0-abc";
+        SquareSync.Apply(refunded, s1, t1);
+        Check("square sync: a smaller paid amount later (refund) never removes payments", !SquareSync.Apply(refunded, s1 with { Status = "REFUNDED", PaidMinor = 0 }, t1) && refunded.AmountPaid == 100m && refunded.SquareStatus == "REFUNDED");
+
+        // review hardening: a Square invoice must really be this invoice before Tempo trusts it
+        var stray = Sq(); stray.SquareInvoiceId = "inv:0-abc"; stray.Number = "INV-2026-999";
+        Check("square sync: an invoice whose number doesn't match Square's is never paid from it", !SquareSync.Apply(stray, s1, t1) && stray.Payments.Count == 0);
+        var noCur = Sq(); noCur.SquareInvoiceId = "inv:0-abc";
+        Check("square sync: a Square answer without a currency is ignored", !SquareSync.Apply(noCur, s1 with { Currency = "" }, t1) && noCur.Payments.Count == 0);
+        Check("square: belongs only with the same number and (when known) the same location",
+            SquareSync.Belongs(Sq(), s1, "L1") && SquareSync.Belongs(Sq(), s1, null) && !SquareSync.Belongs(Sq(), s1, "L2") && !SquareSync.Belongs(stray, s1, "L1"));
+        var manual = Sq(); manual.SquareInvoiceId = "inv:0-abc"; manual.Payments.Add(new Payment { Amount = 50m, Note = "cash" });
+        SquareSync.Apply(manual, s1 with { Status = "PAID", PaidMinor = SquareSync.ToMinor(manual.GrandTotal, "USD") }, t1);
+        Check("square sync: never records more than the balance (paid by hand and on Square)", manual.AmountPaid == manual.GrandTotal && manual.Status == "Paid", manual.AmountPaid.ToString());
+        var full = SquareSync.ParseInvoice("{\"invoice\":{\"id\":\"inv:1\",\"version\":1,\"status\":\"UNPAID\",\"invoice_number\":\"INV-7\",\"location_id\":\"L1\",\"primary_recipient\":{\"customer_id\":\"C1\",\"email_address\":\"x@y.example\"},\"payment_requests\":[]}}");
+        Check("square: reads the invoice's number, location and recipient", full is { Number: "INV-7", LocationId: "L1", Email: "x@y.example" });
+        var many = SquareSync.ParseInvoiceList("{\"invoices\":[{\"id\":\"inv:1\",\"status\":\"UNPAID\",\"invoice_number\":\"INV-7\"},{\"id\":\"inv:2\",\"status\":\"DRAFT\",\"invoice_number\":\"INV-8\"},{\"bad\":1}]}");
+        Check("square: reads a list of invoices, skipping broken ones", many.Count == 2 && many[1].Status == "DRAFT" && SquareSync.ParseInvoiceList("x").Count == 0);
+        var isb = J(SquareSync.InvoiceSearchBody("L1", "C1")).GetProperty("query").GetProperty("filter");
+        Check("square: searches the location's invoices for this customer", isb.GetProperty("location_ids")[0].GetString() == "L1" && isb.GetProperty("customer_ids")[0].GetString() == "C1");
+        Check("square: only plain Square ids are used in addresses",
+            SquareSync.IsSafeId("inv:0-ChAbc_12") && !SquareSync.IsSafeId("") && !SquareSync.IsSafeId("../v2/x") && !SquareSync.IsSafeId("a?b") && !SquareSync.IsSafeId(new string('a', 300)));
+        Check("square: the invoice request key changes with the due date it sends", SquareSync.InvoiceKey(ok, fp, "2026-12-01") != SquareSync.InvoiceKey(ok, fp, "2026-12-20") && SquareSync.InvoiceKey(ok, fp, "2026-12-01").Length <= 128);
+        var mine = Sq(); mine.SquareInvoiceId = "inv:0-abc"; mine.SquareStatus = "UNPAID"; mine.SquareVersion = 2; mine.SquareFingerprint = fp; mine.SquareAttempt = 1;
+        var theirs = Sq(); theirs.Note = "edited on the laptop";
+        SquareSync.KeepLink(mine, theirs);
+        var theirs2 = Sq(); theirs2.SquareInvoiceId = "inv:new"; SquareSync.KeepLink(mine, theirs2);
+        Check("sync: an edit from another PC never drops this invoice's Square link", theirs.SquareInvoiceId == "inv:0-abc" && theirs.SquareStatus == "UNPAID" && theirs.SquareVersion == 2 && theirs.SquareAttempt == 1
+            && theirs2.SquareInvoiceId == "inv:new");
+        var forged = Sq(); forged.SquareInvoiceId = "../../v2/payments"; forged.SquareStatus = "UNPAID"; SquareSync.SanitizeLink(forged);
+        var fine = Sq(); fine.SquareInvoiceId = "inv:0-abc"; SquareSync.SanitizeLink(fine);
+        var nulls = Sq(); nulls.SquareInvoiceId = null!; nulls.SquareStatus = null!; nulls.SquareFingerprint = null!;
+        bool nullOk; try { SquareSync.SanitizeLink(nulls); nullOk = nulls.SquareInvoiceId == "" && nulls.SquareStatus == "" && nulls.SquareFingerprint == ""; } catch { nullOk = false; }
+        Check("sync: a synced invoice with empty (null) Square fields is cleaned, not a crash", nullOk);
+        Check("sync: a synced Square link that isn't a plain id is dropped", forged.SquareInvoiceId == "" && forged.SquareStatus == "" && fine.SquareInvoiceId == "inv:0-abc");
+
+        Check("square: only Square's own https pages open from Tempo",
+            SquareSync.IsSquareUrl("https://squareup.com/pay-invoice/inv:0-abc") && SquareSync.IsSquareUrl("https://app.squareupsandbox.com/pay-invoice/x")
+            && !SquareSync.IsSquareUrl("http://squareup.com/pay-invoice/x") && !SquareSync.IsSquareUrl("https://squareup.com.evil.example/x")
+            && !SquareSync.IsSquareUrl("https://evilsquareup.com/x") && !SquareSync.IsSquareUrl("javascript:alert(1)"));
     }
 
     // ---------- phase 11: bring-your-own-key integrations ----------
