@@ -10,7 +10,7 @@
     <RootNamespace>Tempo</RootNamespace>
     <Product>Tempo</Product>
     <ApplicationIcon>Assets/tempo.ico</ApplicationIcon>
-    <Version>2.9.0</Version>
+    <Version>2.9.1</Version>
     <Company>Tempo (open source)</Company>
     <Description>Tempo: time tracking and invoicing for Windows</Description>
     <Copyright>MIT licence</Copyright>
